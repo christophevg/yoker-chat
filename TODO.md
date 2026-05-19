@@ -4,12 +4,13 @@
 
 ### Phase 1: Core Implementation
 
-- [ ] **1.1 Project Setup**
+- [x] **1.1 Project Setup**
   - Create Python package structure (src/yoker_chat/)
   - Set up pyproject.toml with dependencies (yoker, roomz)
-  - Configure development environment (ruff, mypy, pytest)
+  - Configure development environment (ruff, mypy, pytest, tox)
   - Create CLI entry point (yoker-chat)
   - Set up Sphinx documentation structure
+  - **Satisfies**: R50-R53 (usability requirements)
 
 - [ ] **1.2 Authentication Module**
   - Implement interactive login flow (prompt for email → request magic link → prompt for token)
@@ -86,4 +87,11 @@
 
 ## Done
 
-(No completed tasks yet)
+- [x] **1.1 Project Setup** (2026-05-19)
+  - Python package structure with src/ layout
+  - pyproject.toml with dependencies (yoker, roomz, structlog, aiohttp)
+  - Development tooling (ruff, mypy, pytest, tox)
+  - CLI entry point (yoker-chat)
+  - Sphinx documentation with ReadTheDocs config
+  - Makefile with uv-based targets
+  - GitHub Actions CI for Python 3.10, 3.11, 3.12

@@ -89,7 +89,7 @@ The Yoker Chat Client is a standalone client application that bridges Roomz chat
 
 ### Usability
 
-- [ ] R50: Client must provide clear command-line help
+- [x] R50: Client must provide clear command-line help (Phase 1: Task 1.1)
 - [ ] R51: Client must log all events using structured logging (configurable output: stdout, stderr, file)
 - [ ] R52: Client must log incoming messages with timestamp and sender
 - [ ] R53: Client must log outgoing responses with timestamp
