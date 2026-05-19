@@ -1,0 +1,95 @@
+[project]
+name = "yoker-chat"
+version = "0.1.0"
+description = "Chat client that bridges Roomz chat rooms to Yoker agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Christophe VG", email = "contact@christophe.vg" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Typing :: Typed",
+]
+dependencies = [
+  "yoker>=0.1.0",
+  "roomz>=0.1.0",
+  "structlog>=23.0.0",
+  "aiohttp>=3.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.0.0",
+  "pytest-asyncio>=0.23.0",
+  "ruff>=0.1.0",
+  "mypy>=1.8.0",
+  "tox>=4.0.0",
+  "tox-uv>=1.0.0",
+]
+docs = [
+  "sphinx>=7.0.0",
+  "sphinx-rtd-theme>=2.0.0",
+  "myst-parser>=2.0.0",
+]
+
+[project.scripts]
+yoker-chat = "yoker_chat:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yoker_chat"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+indent-width = 2
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "UP",  # pyupgrade
+]
+ignore = [
+  "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["yoker_chat"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+# Multi-version testing
+[tool.tox]
+env_list = ["py310", "py311", "py312"]
+
+[tool.tox.env_run_base]
+description = "run tests with pytest"
+skip_install = false
+commands_pre = [
+  ["uv", "pip", "install", "-e", "."],
+  ["uv", "pip", "install", "pytest", "pytest-cov", "pytest-asyncio"],
+]
+commands = [["pytest", "tests", "-v", "--cov=yoker_chat", "--cov-report=term-missing"]]
