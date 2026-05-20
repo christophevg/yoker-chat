@@ -95,3 +95,11 @@
   - Sphinx documentation with ReadTheDocs config
   - Makefile with uv-based targets
   - GitHub Actions CI for Python 3.10, 3.11, 3.12
+- [x] **1.2 Authentication Module** (2026-05-20)
+  - Implement interactive login flow (prompt for email $\rightarrow$ request magic link $\rightarrow$ prompt for token)
+  - Support --login and --token arguments for non-interactive authentication
+  - Support --name argument to set display name (matches /name command)
+  - Support session caching for automatic reconnection
+  - Implement session cache file with restrictive permissions (0600)
+  - Handle cached session validation and expiry
+  - **Satisfies**: R1-R8

@@ -54,13 +54,23 @@ Check your email and paste the token:
 ✓ Connected to chat room
 ```
 
-### Non-Interactive Mode
+# Non-Interactive Mode
 
 ```bash
 yoker-chat --server-url http://localhost:5000 \
            --agent agents/chat-bot.md \
            --login bot@example.com \
            --token $MAGIC_TOKEN \
+           --name "Assistant"
+```
+
+Alternatively, use the `YOKER_CHAT_TOKEN` environment variable for better security:
+
+```bash
+export YOKER_CHAT_TOKEN=abc123def456
+yoker-chat --server-url http://localhost:5000 \
+           --agent agents/chat-bot.md \
+           --login bot@example.com \
            --name "Assistant"
 ```
 

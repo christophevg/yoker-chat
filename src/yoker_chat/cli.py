@@ -1,9 +1,13 @@
 """CLI entry point for yoker-chat."""
 
 import argparse
+import asyncio
 import logging
 
 import structlog
+
+from yoker_chat.client import ChatClient
+from yoker_chat.logging import get_default_processors
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +55,7 @@ def parse_args() -> argparse.Namespace:
 
   parser.add_argument(
     "--token",
-    help="Magic link token for authentication (non-interactive mode)",
+    help="Magic link token for authentication (non-interactive mode). Note: Passing tokens via CLI is insecure; YOKER_CHAT_TOKEN env var is preferred.",
   )
 
   parser.add_argument(
@@ -85,18 +89,7 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
   # Note: log_file is not yet used - will be implemented with file handler
   _ = log_file  # Suppress unused variable warning
 
-  if log_format == "json":
-    processors: list[object] = [
-      structlog.processors.TimeStamper(fmt="iso"),
-      structlog.processors.add_log_level,
-      structlog.processors.JSONRenderer(),
-    ]
-  else:
-    processors = [
-      structlog.processors.TimeStamper(fmt="iso"),
-      structlog.processors.add_log_level,
-      structlog.dev.ConsoleRenderer(),
-    ]
+  processors = get_default_processors(log_format)
 
   structlog.configure(
     processors=processors,  # type: ignore[arg-type]
@@ -105,16 +98,44 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
   )
 
 
+async def _run_client(args: argparse.Namespace) -> None:
+  """Initialize and run the chat client."""
+  # In a real implementation, we would load the agent here.
+  # For now, we use a mock agent or just pass None.
+  agent = None
+
+  client = ChatClient(
+    server_url=args.server_url,
+    agent=agent,
+    session_cache_path=args.session_cache,
+    name=args.name,
+  )
+
+  try:
+    await client.authenticate(login=args.login, token=args.token)
+    print("✓ Authenticated and connected to chat room")
+
+    # Keep the client running (in a real app, this would be the event loop for messages)
+    # For Task 1.2, we just need to verify authentication.
+    # await client.start() # This would be implemented in Task 1.3
+  finally:
+    await client.disconnect()
+
+
 def main() -> None:
   """Main entry point for yoker-chat CLI."""
   args = parse_args()
   setup_logging(args.log_file, args.log_format)
 
-  # TODO: Implement client startup
   print(f"yoker-chat v{__import__('yoker_chat').__version__}")
-  print(f"Server: {args.server_url}")
-  print(f"Agent: {args.agent}")
-  print("Not yet implemented - project setup in progress")
+
+  try:
+    asyncio.run(_run_client(args))
+  except KeyboardInterrupt:
+    print("\nShutting down...")
+  except Exception as e:
+    print(f"Error: {e}")
+    exit(1)
 
 
 if __name__ == "__main__":

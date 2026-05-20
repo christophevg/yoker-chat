@@ -45,9 +45,6 @@ docs: env-dev ## Build HTML documentation
 docs-view: docs ## Build and open documentation in browser
 	open docs/_build/html/index.html
 
-# All
-all: help ## Show this help message
-
 help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""

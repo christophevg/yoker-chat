@@ -8,14 +8,14 @@ The Yoker Chat Client is a standalone client application that bridges Roomz chat
 
 ### Authentication
 
-- [ ] R1: Client must support `--login` argument to provide email address (optional, matches /login command)
-- [ ] R2: Client must support `--token` argument to provide magic link token (optional)
-- [ ] R3: Client must support `--name` argument to set display name (optional, matches /name command)
-- [ ] R4: Client must perform interactive login flow when login/token not provided (prompt for email, request magic link, prompt for token)
-- [ ] R5: Client must cache session cookies for automatic reconnection
-- [ ] R6: Client must check for cached session on startup and skip interactive flow if valid
-- [ ] R7: Client must fall back to interactive login if cached session is expired/invalid
-- [ ] R8: Client must clear session cache on explicit logout
+- [x] R1: Client must support `--login` argument to provide email address (optional, matches /login command) (Phase 1: Task 1.2)
+- [x] R2: Client must support `--token` argument to provide magic link token (optional) (Phase 1: Task 1.2)
+- [x] R3: Client must support `--name` argument to set display name (optional, matches /name command) (Phase 1: Task 1.2)
+- [x] R4: Client must perform interactive login flow when login/token not provided (prompt for email, request magic link, prompt for token) (Phase 1: Task 1.2)
+- [x] R5: Client must cache session cookies for automatic reconnection (Phase 1: Task 1.2)
+- [x] R6: Client must check for cached session on startup and skip interactive flow if valid (Phase 1: Task 1.2)
+- [x] R7: Client must fall back to interactive login if cached session is expired/invalid (Phase 1: Task 1.2)
+- [x] R8: Client must clear session cache on explicit logout (Phase 1: Task 1.2)
 
 ### Connection Management
 
