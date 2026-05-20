@@ -1,9 +1,11 @@
-import pytest
 import os
-from unittest.mock import patch, MagicMock, AsyncMock
-from pathlib import Path
-from yoker_chat.client import ChatClient, AuthenticationError
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from yoker_chat.client import ChatClient
 from yoker_chat.session import SessionCache
+
 
 @pytest.fixture
 def mock_roomz():
@@ -13,7 +15,7 @@ def mock_roomz():
         instance.connect = AsyncMock()
         instance.set_name = AsyncMock()
         instance.user = {"email": "test@example.com"}
-        instance.session_cookie = "mock_cookie_123"
+        instance._cached_cookie = "mock_cookie_123"
         yield instance
 
 @pytest.fixture
@@ -25,7 +27,7 @@ async def test_auth_interactive_flow_sequence(mock_roomz, temp_cache):
     """
     Given: A user starts yoker-chat without arguments
     When: The user is prompted for email and then token
-    Then: The client should follow the sequence: prompt email -> call login() -> prompt token -> call connect(token=...)
+    Then: The client should follow the sequence: prompt email -> call login() -> prompt token -> call connect(session_token=...)
     """
     client = ChatClient(
         server_url="http://localhost:5000",
@@ -41,7 +43,7 @@ async def test_auth_interactive_flow_sequence(mock_roomz, temp_cache):
         await client.authenticate()
 
         mock_roomz.login.assert_called_once_with("user@example.com")
-        mock_roomz.connect.assert_called_once_with(token="token123")
+        mock_roomz.connect.assert_called_once_with(session_token="token123")
 
 @pytest.mark.asyncio
 async def test_auth_cli_args_bypass_prompts(mock_roomz, temp_cache):
@@ -63,7 +65,7 @@ async def test_auth_cli_args_bypass_prompts(mock_roomz, temp_cache):
 
         mock_input.assert_not_called()
         mock_getpass.assert_not_called()
-        mock_roomz.connect.assert_called_once_with(token="token123")
+        mock_roomz.connect.assert_called_once_with(session_token="token123")
 
 @pytest.mark.asyncio
 async def test_auth_env_var_token_fallback(mock_roomz, temp_cache):
@@ -83,7 +85,7 @@ async def test_auth_env_var_token_fallback(mock_roomz, temp_cache):
         # Provide login but not token
         await client.authenticate(login="user@example.com", token=None)
 
-        mock_roomz.connect.assert_called_once_with(token="env_token_456")
+        mock_roomz.connect.assert_called_once_with(session_token="env_token_456")
 
 @pytest.mark.asyncio
 async def test_auth_session_cache_creation_on_success(mock_roomz, temp_cache):
@@ -101,7 +103,7 @@ async def test_auth_session_cache_creation_on_success(mock_roomz, temp_cache):
     await client.authenticate(login="user@example.com", token="token123")
 
     assert temp_cache.exists()
-    with open(temp_cache, "r") as f:
+    with open(temp_cache) as f:
         import json
         data = json.load(f)
         assert data["session"]["cookie"] == "mock_cookie_123"
@@ -141,7 +143,7 @@ async def test_auth_session_reuse_auto_connect(mock_roomz, temp_cache):
         await client.authenticate()
 
         mock_input.assert_not_called()
-        mock_roomz.connect.assert_called_once_with(cookie="cached_cookie_789")
+        mock_roomz.connect.assert_called_once_with(session_token="cached_cookie_789")
 
 @pytest.mark.asyncio
 async def test_auth_session_expiry_triggers_reauth(mock_roomz, temp_cache):
@@ -169,10 +171,10 @@ async def test_auth_session_expiry_triggers_reauth(mock_roomz, temp_cache):
 
         await client.authenticate()
 
-        # First call was with cookie, second with token
+        # First call was with session_token, second with session_token
         assert mock_roomz.connect.call_count == 2
-        assert mock_roomz.connect.call_args_list[0][1].get("cookie") == "expired_cookie"
-        assert mock_roomz.connect.call_args_list[1][1].get("token") == "new_token"
+        assert mock_roomz.connect.call_args_list[0][1].get("session_token") == "expired_cookie"
+        assert mock_roomz.connect.call_args_list[1][1].get("session_token") == "new_token"
 
 @pytest.mark.asyncio
 async def test_auth_log_redaction_of_sensitive_data(caplog):
@@ -181,7 +183,6 @@ async def test_auth_log_redaction_of_sensitive_data(caplog):
     When: A token or session cookie is processed
     Then: These sensitive values should be redacted in the logs (e.g., replaced with [REDACTED] or masked)
     """
-    import structlog
     from yoker_chat.logging import redaction_processor
 
     # We can test the processor directly
@@ -206,8 +207,7 @@ async def test_auth_token_prompt_prevents_echo(mock_roomz, temp_cache):
     )
 
     with patch("builtins.input", side_effect=["user@example.com"]), \
-         patch("getpass.getpass", return_value="secure_token") as mock_getpass, \
-         patch("builtins.input", side_effect=["user@example.com"]): # Just in case
+         patch("getpass.getpass", return_value="secure_token") as mock_getpass:
 
         mock_roomz.login.return_value = {"status": "sent"}
 

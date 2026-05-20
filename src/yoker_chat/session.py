@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+
 class SessionCache:
   """Manages session persistence for yoker-chat."""
 
@@ -57,9 +58,9 @@ class SessionCache:
       return None
 
     try:
-      with open(self.cache_path, "r") as f:
+      with open(self.cache_path) as f:
         return json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except (OSError, json.JSONDecodeError):
       return None
 
   def clear(self) -> None:

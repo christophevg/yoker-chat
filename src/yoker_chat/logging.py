@@ -2,13 +2,30 @@
 
 import structlog
 
+
 def redaction_processor(_, __, event_dict: dict) -> dict:
-  """Redact sensitive information from log events."""
-  sensitive_keys = {"token", "session_cookie", "password"}
+  """
+  Redact sensitive information from log events.
+
+  Sensitive keys:
+  - Authentication: token, session_cookie, password
+  - PII: email, sender, content, response
+  """
+  sensitive_keys = {
+    # Authentication secrets
+    "token", "session_cookie", "password",
+    # PII - message content
+    "content", "content_preview", "chunk_preview", "message_preview",
+    # PII - user identifiers
+    "email", "sender", "user",
+    # PII - responses
+    "response", "preview",
+  }
   for key in sensitive_keys:
     if key in event_dict:
       event_dict[key] = "[REDACTED]"
   return event_dict
+
 
 def get_default_processors(log_format: str) -> list[object]:
   """Get default structlog processors based on format."""

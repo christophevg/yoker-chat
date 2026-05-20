@@ -12,7 +12,7 @@
   - Set up Sphinx documentation structure
   - **Satisfies**: R50-R53 (usability requirements)
 
-- [ ] **1.2 Authentication Module**
+- [x] **1.2 Authentication Module**
   - Implement interactive login flow (prompt for email → request magic link → prompt for token)
   - Support --login and --token arguments for non-interactive authentication
   - Support --name argument to set display name (matches /name command)
@@ -21,12 +21,13 @@
   - Handle cached session validation and expiry
   - **Satisfies**: R1-R8
 
-- [ ] **1.3 ChatClient Class**
+- [x] **1.3 ChatClient Class**
   - Create ChatClient class to bridge Roomz AsyncClient to Yoker Agent
   - Implement message filtering (ignore own messages, check mentions)
   - Implement message queuing for sequential processing
   - Implement agent response capture and buffering
   - Implement response sending to chat room
+  - **Design**: See [analysis/api-chatclient.md](analysis/api-chatclient.md)
   - **Satisfies**: R12-R20
 
 - [ ] **1.4 Session Context Management**
@@ -103,3 +104,13 @@
   - Implement session cache file with restrictive permissions (0600)
   - Handle cached session validation and expiry
   - **Satisfies**: R1-R8
+- [x] **1.3 ChatClient Class** (2026-05-20)
+  - Create ChatClient class to bridge Roomz AsyncClient to Yoker Agent
+  - Implement message filtering (ignore own messages, check mentions)
+  - Implement message queuing for sequential processing
+  - Implement agent response capture and buffering
+  - Implement response sending to chat room
+  - Security: Input sanitization, rate limiting, message size limits, log redaction
+  - Graceful shutdown: Wait for current message before disconnecting
+  - **Design**: See [analysis/api-chatclient.md](analysis/api-chatclient.md)
+  - **Satisfies**: R12-R20
