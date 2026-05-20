@@ -16,6 +16,7 @@ from yoker_chat.client import AgentError, ChatClient, RateLimiter
 # Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_roomz_client():
   """Create a mock Roomz AsyncClient for testing."""
@@ -91,15 +92,16 @@ def chat_client_custom_mentions(mock_roomz_client, mock_agent, tmp_path):
 # Message Filtering Tests
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_message_filter_own_messages(chat_client):
   """
-  Given: A message from the bot's own email address
+  Given: A message from the bot's own display name
   When: The message arrives at the ChatClient
   Then: The message should be filtered out and NOT queued for processing
   """
-  chat_client._current_user_email = "bot@example.com"
-  message_data = {"user": {"email": "bot@example.com"}, "content": "@bot hello"}
+  chat_client._current_user_name = "TestBot"
+  message_data = {"user": {"name": "TestBot", "email": "bot@example.com"}, "content": "@bot hello"}
   result = chat_client._should_process_message(message_data)
   assert result is False
 
@@ -194,6 +196,7 @@ async def test_message_filter_case_insensitive(chat_client):
 # Message Queue Tests
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_message_queue_sequential_processing(chat_client):
   """
@@ -229,9 +232,12 @@ async def test_message_queue_sequential_processing(chat_client):
   # Verify sequential processing
   # Each message should start after previous one ends
   assert processing_order == [
-    "start:message1", "end:message1",
-    "start:message2", "end:message2",
-    "start:message3", "end:message3",
+    "start:message1",
+    "end:message1",
+    "start:message2",
+    "end:message2",
+    "start:message3",
+    "end:message3",
   ]
 
   await chat_client.stop()
@@ -275,6 +281,7 @@ async def test_message_queue_size_limit(mock_roomz_client, mock_agent, tmp_path)
 # Agent Response Tests
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_agent_response_content_chunk_buffering(chat_client):
   """
@@ -300,26 +307,29 @@ async def test_agent_response_content_chunk_buffering(chat_client):
 @pytest.mark.asyncio
 async def test_agent_response_complete_on_content_end(chat_client):
   """
-  Given: Agent has emitted ContentChunk events and buffer contains response
-  When: Agent emits ContentEnd event
+  Given: Agent has emitted ContentChunk events and ContentEnd event
+  When: _process_single_message processes the message
   Then: The complete buffered response should be sent to Roomz via client.send()
   """
-  # Set up buffer
-  chat_client._response_buffer = ["Hello", " there", "!"]
+  # Set up the mock agent to emit ContentEnd after processing
+  from yoker.events import ContentChunkEvent, ContentEndEvent
 
-  # Mock send method
+  async def mock_process(message):
+    # Emit some chunks
+    chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="Hello"))
+    chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text=" there"))
+    chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="!"))
+    # Emit ContentEnd (requires total_length)
+    chat_client._on_agent_content_end(ContentEndEvent(type="content_end", total_length=12))
+    return "Hello there!"
+
+  chat_client.agent.process = AsyncMock(side_effect=mock_process)
   chat_client.roomz_client.send = AsyncMock()
 
-  # Create a future that will be resolved
-  chat_client._response_complete = asyncio.get_event_loop().create_future()
+  # Process a message
+  await chat_client._process_single_message("test message")
 
-  # Handle ContentEnd
-  chat_client._on_agent_content_end(MagicMock())
-
-  # Wait a bit for the async task
-  await asyncio.sleep(0.01)
-
-  # Verify send was called
+  # Verify send was called with the complete response
   chat_client.roomz_client.send.assert_called_once_with("Hello there!")
 
 
@@ -350,6 +360,7 @@ async def test_agent_error_user_friendly_message(chat_client):
 # ============================================================================
 # Integration Tests
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_integration_end_to_end_message_flow(chat_client):
@@ -388,10 +399,7 @@ async def test_integration_end_to_end_message_flow(chat_client):
   await chat_client.start()
 
   # Simulate incoming message
-  message_data = {
-    "user": {"email": "user@example.com"},
-    "content": "@bot hello"
-  }
+  message_data = {"user": {"email": "user@example.com"}, "content": "@bot hello"}
 
   await chat_client._on_roomz_message(message_data)
 
@@ -407,6 +415,7 @@ async def test_integration_end_to_end_message_flow(chat_client):
 # ============================================================================
 # Security Tests
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_security_input_sanitization_control_characters(chat_client):
@@ -510,6 +519,7 @@ async def test_security_prompt_injection_detection(chat_client):
 # Graceful Shutdown Tests
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_shutdown_waits_for_current_message(chat_client):
   """
@@ -580,6 +590,7 @@ async def test_shutdown_stops_accepting_new_messages(chat_client):
 # Error Handling Tests
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_error_handling_agent_timeout(chat_client):
   """
@@ -603,7 +614,11 @@ async def test_error_handling_agent_timeout(chat_client):
   # Verify timeout message was sent
   chat_client.roomz_client.send.assert_called()
   call_args = chat_client.roomz_client.send.call_args[0][0]
-  assert "too long" in call_args.lower() or "timeout" in call_args.lower() or "try again" in call_args.lower()
+  assert (
+    "too long" in call_args.lower()
+    or "timeout" in call_args.lower()
+    or "try again" in call_args.lower()
+  )
 
 
 @pytest.mark.asyncio
@@ -625,6 +640,7 @@ async def test_error_handling_connection_failure(chat_client):
 # ============================================================================
 # Message Extraction Tests
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_message_extraction_removes_mention(chat_client):
@@ -654,6 +670,7 @@ async def test_message_extraction_multiple_mentions(chat_client):
 # ============================================================================
 # Rate Limiter Tests
 # ============================================================================
+
 
 def test_rate_limiter_allows_within_limit():
   """Test that rate limiter allows messages within the limit."""
@@ -691,6 +708,7 @@ def test_rate_limiter_window_expiry():
 
   # Wait for window to expire
   import time
+
   time.sleep(0.02)
 
   # Should be allowed again

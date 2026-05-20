@@ -2,135 +2,131 @@
 
 ## Current Status
 
-**3 commits ahead of `github/master`** - ready to push when you want.
+**All core tasks complete.** Ready for iterative improvements.
 
 ### Completed Tasks
 
 | Task | Status | Key Files |
 |------|--------|-----------|
 | 1.1 Project Setup | ✅ Done | Package structure, CLI, tests |
-| 1.2 Authentication | ✅ Done | `client.py`, `session.py` (now using Roomz native caching) |
+| 1.2 Authentication | ✅ Done | `client.py`, `session.py` (using Roomz native caching) |
 | 1.3 ChatClient Class | ✅ Done | `client.py` - message filtering, queuing, response capture |
-| Fix: Session Caching | ✅ Done | Now uses Roomz's `session_cache_file` parameter |
-| Fix: Chat Functionality | ✅ Done | CLI calls `start()`, keeps running |
+| 1.3.5 Yoker Agent Integration | ✅ Done | `cli.py` - real agent integration |
 
-### Architecture
+## Architecture
 
 ```
 Roomz AsyncClient → ChatClient → Yoker Agent
-      ↑                   ↓
-   WebSocket          (currently MockAgent)
-   (chat room)        ↓
-                  Response → Roomz
+      ↑                  ↓            ↓
+   WebSocket         Buffer/Queue  Events (ContentChunk, ContentEnd)
+      ↑                  ↓            ↓
+   Chat Room       Filter/Mention   Response Buffer
+                       ↓
+                   Send Response
 ```
 
-## ⚠️ NEXT PRIORITY: Task 1.3.5 - Yoker Agent Integration
+## Key Implementation Details
 
-**The core bridging functionality is not yet implemented!**
+### Message Flow
+1. Roomz message received → `_on_roomz_message`
+2. Filter by display name (bot's name) and mention trigger
+3. Queue for sequential processing
+4. Process via Yoker Agent (runs in thread pool)
+5. Buffer ContentChunk events
+6. On ContentEnd, send complete response to Roomz
 
-Currently using `MockAgent` (simple echo) for testing. Need to:
+### Important Design Decisions
 
-1. **Check if Yoker package exists**:
-   - Look in `../yoker` (sibling directory)
-   - Or install from PyPI: `uv add yoker`
+1. **Display Name Filtering** (not email)
+   - Filter messages by display name (`--name` argument)
+   - Allows multiple users with same email but different names
+   - Prevents filtering own messages in shared account scenarios
 
-2. **Load Agent Definition**:
-   ```python
-   # From --agent argument (Markdown file with frontmatter)
-   # Example: examples/agents/chat-bot.md
-   ```
+2. **Sync Agent in Thread Pool**
+   - Yoker Agent's `process()` is synchronous
+   - Run in thread pool with `run_in_executor()`
+   - Events are emitted during processing, captured by handlers
 
-3. **Load Yoker Configuration**:
-   ```python
-   # From --config argument (TOML file)
-   # Example: yoker.toml
-   ```
+3. **Event Handler Registration**
+   - Yoker Agent uses single handler for ALL events
+   - Filter by `isinstance(event, ContentChunkEvent)` etc.
+   - Events: ContentChunkEvent, ContentEndEvent, ErrorEvent
 
-4. **Wire up event handlers**:
-   ```python
-   agent.add_event_handler("ContentChunk", client._on_agent_content_chunk)
-   agent.add_event_handler("ContentEnd", client._on_agent_content_end)
-   agent.add_event_handler("Error", client._on_agent_error)
-   ```
-
-5. **Key files to modify**:
-   - `src/yoker_chat/cli.py` - Load real agent instead of MockAgent
-   - `src/yoker_chat/client.py` - Verify agent interface compatibility
-
-## How to Start Next Session
-
-```bash
-cd /Users/xtof/Workspace/agentic/yoker-chat
-
-# 1. Check current state
-git status
-git log --oneline -5
-
-# 2. Verify Yoker package location
-ls -la ../yoker  # or wherever it is
-
-# 3. Run current tests
-uv run pytest tests/ -v
-
-# 4. Try running the client
-uv run python -m yoker_chat --help
-```
-
-## Project Structure
-
-```
-yoker-chat/
-├── src/yoker_chat/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── cli.py           # Entry point, argument parsing
-│   ├── client.py        # ChatClient, RateLimiter, authentication
-│   ├── logging.py       # Structured logging with redaction
-│   ├── mock_agent.py    # ← REMOVE: Replace with real Yoker Agent
-│   └── session.py       # ← MAYBE REMOVE: Roomz handles sessions now
-├── tests/
-│   ├── test_auth.py     # 9 tests for authentication
-│   └── test_chatclient.py  # 27 tests for ChatClient
-├── analysis/
-│   ├── api-chatclient.md
-│   ├── security-chatclient.md
-│   └── ...
-└── TODO.md
-```
-
-## Key Design Decisions Made
-
-1. **Session Caching**: Uses Roomz's native `session_cache_file` parameter (not our custom implementation)
-2. **Message Flow**: Roomz → filter → queue → agent → response → Roomz
-3. **Rate Limiting**: Per-user sliding window (10 messages/minute by default)
-4. **Security**: Input sanitization, prompt injection detection, log redaction
+4. **Response Flow**
+   - `_on_agent_content_end` sets `_response_complete` future
+   - `_process_single_message` waits for future, then sends response
+   - Avoids `asyncio.create_task()` from thread pool
 
 ## Remaining Tasks (Lower Priority)
 
-- 1.4 Session Context Management (`--resume` flag)
-- 1.5 Logging System (file logging, JSON format)
-- 1.6 Configuration (TOML file support)
-- 1.7 Error Handling (retry logic)
-- 1.8 Graceful Shutdown (SIGINT/SIGTERM)
+| Task | Priority | Notes |
+|------|----------|-------|
+| 1.4 Session Context Management | Medium | `--resume` flag |
+| 1.5 Logging System | Medium | File logging, JSON format |
+| 1.6 Configuration | Low | TOML file support |
+| 1.7 Error Handling | Medium | Retry logic |
+| 1.8 Graceful Shutdown | Medium | SIGINT/SIGTERM handling |
 
 ## Testing Notes
 
-- All 36 tests pass
-- MockAgent echoes: `[BotName] You said: <message>`
-- Roomz handles session persistence automatically
+- All 85 tests pass
+- 4 tests skipped (require Ollama backend for integration)
+- Coverage: ~59%
+
+## Running the Client
+
+```bash
+# Basic usage
+uv run python -m yoker_chat \
+  --server-url http://localhost:8081 \
+  --agent path/to/agent.md \
+  --config path/to/yoker.toml \
+  --name "BotName"
+
+# With mention trigger
+uv run python -m yoker_chat \
+  --server-url http://localhost:8081 \
+  --agent agents/chat-bot.md \
+  --config yoker.toml \
+  --name "Assistant" \
+  --mention-trigger "@assistant" \
+  --mention-trigger "@help"
+```
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/yoker_chat/cli.py` | CLI entry point, agent initialization |
+| `src/yoker_chat/client.py` | ChatClient class, message processing |
+| `src/yoker_chat/validation.py` | Security validations |
+| `tests/test_yoker_integration.py` | Integration tests |
+| `analysis/api-yoker-integration.md` | Integration architecture |
+| `analysis/security-yoker-integration.md` | Security analysis |
 
 ## Dependencies
 
 ```toml
 [project]
 dependencies = [
-    "yoker>=0.1.0",   # ← Need to verify/install this
-    "roomz>=0.1.0",   # ✅ Already using
+    "yoker @ { path = '../yoker', editable = true }",  # Local package
+    "roomz>=0.1.0",
     "structlog>=23.0.0",
     "aiohttp>=3.8.0",
 ]
 ```
 
+## Known Issues / Future Work
+
+1. **Roomz Display Name Race Condition**
+   - Issue: Roomz client tries to set display name before socket is ready
+   - Error: `ConnectionError: Not connected` (logged but doesn't crash)
+   - Fix needed: In Roomz package, wait for socket before setting display name
+
+2. **Integration Tests Skipped**
+   - Tests requiring Ollama backend are skipped
+   - Add `--run-integration` flag for CI with Ollama
+
 ---
 
-**Start fresh session and focus on Task 1.3.5 - Yoker Agent Integration!**
+**Next session can focus on any remaining task from the backlog.**

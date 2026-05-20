@@ -115,7 +115,7 @@
   - **Design**: See [analysis/api-chatclient.md](analysis/api-chatclient.md)
   - **Satisfies**: R12-R20
 
-- [ ] **1.3.5 Yoker Agent Integration** ⚠️ HIGH PRIORITY
+- [x] **1.3.5 Yoker Agent Integration** (2026-05-20)
   - Replace MockAgent with actual Yoker Agent
   - Load agent definition from file (Markdown with frontmatter)
   - Load Yoker configuration (TOML)
@@ -123,5 +123,6 @@
   - Pass messages from Roomz → ChatClient → Yoker Agent
   - Send agent responses back to Roomz
   - Test end-to-end message flow with real Yoker agent
-  - **Context**: Currently using MockAgent for testing - need to integrate actual Yoker package
-  - **Dependencies**: Requires `yoker` package (check ../yoker or install from PyPI)
+  - Filter messages by display name (not email) to support shared accounts
+  - Run agent.process() in thread pool for sync-to-async compatibility
+  - **Satisfies**: R12-R20

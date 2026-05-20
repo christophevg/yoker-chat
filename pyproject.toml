@@ -17,10 +17,11 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "yoker>=0.1.0",
+  "yoker>=0.2.0",
   "roomz>=0.1.0",
   "structlog>=23.0.0",
   "aiohttp>=3.8.0",
+  "python-dotenv>=1.2.2",
 ]
 
 [project.optional-dependencies]
@@ -80,6 +81,10 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# Local package sources
+[tool.uv.sources]
+yoker = { path = "../yoker", editable = true }
 
 # Multi-version testing
 [tool.tox]

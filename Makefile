@@ -50,3 +50,18 @@ help: ## Show this help message
 	@echo ""
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | grep -v "install-pythons\|sync" | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+
+client:
+	uv run python -m yoker_chat \
+	  --server-url http://localhost:8081 \
+	  --agent ../yoker/examples/agents/main.md \
+	  --config ../yoker/yoker.toml \
+	  --name "TestBot"
+
+online-client:
+	uv run python -m yoker_chat \
+	  --server-url https://roomz.app.homemadebycvg.com \
+	  --agent ../c3/agents/assistant.md \
+	  --config ../yoker/yoker.toml \
+	  --name "Eira"

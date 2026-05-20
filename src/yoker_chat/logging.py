@@ -13,13 +13,21 @@ def redaction_processor(_, __, event_dict: dict) -> dict:
   """
   sensitive_keys = {
     # Authentication secrets
-    "token", "session_cookie", "password",
+    "token",
+    "session_cookie",
+    "password",
     # PII - message content
-    "content", "content_preview", "chunk_preview", "message_preview",
+    "content",
+    "content_preview",
+    "chunk_preview",
+    "message_preview",
     # PII - user identifiers
-    "email", "sender", "user",
+    "email",
+    "sender",
+    "user",
     # PII - responses
-    "response", "preview",
+    "response",
+    "preview",
   }
   for key in sensitive_keys:
     if key in event_dict:

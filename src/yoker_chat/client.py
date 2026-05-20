@@ -17,11 +17,13 @@ log = structlog.get_logger()
 
 class AuthenticationError(Exception):
   """Base exception for authentication failures."""
+
   pass
 
 
 class AgentError(Exception):
   """Exception raised when agent processing fails."""
+
   pass
 
 
@@ -129,8 +131,9 @@ class ChatClient:
     self._queue_worker: asyncio.Task | None = None
     self._running = False
 
-    # Current user email (for filtering own messages)
+    # Current user info (for filtering own messages)
     self._current_user_email: str | None = None
+    self._current_user_name: str | None = None
 
     # Rate limiting
     self._rate_limiter = RateLimiter(max_messages=max_messages_per_minute, window_seconds=60)
@@ -168,9 +171,12 @@ class ChatClient:
       log.info("authenticating_with_token")
       try:
         await self.roomz_client.connect(session_token=token)
-        user_email = self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+        user_email = (
+          self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+        )
         self._current_user_email = user_email
-        log.info("auth_success", email=user_email)
+        self._current_user_name = self.name  # Use the bot's display name
+        log.info("auth_success", email=user_email, display_name=self.name)
         return
       except Exception as e:
         log.error("token_auth_failed", error=str(e))
@@ -180,9 +186,12 @@ class ChatClient:
     try:
       log.info("attempting_cached_session")
       await self.roomz_client.connect()
-      user_email = self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+      user_email = (
+        self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+      )
       self._current_user_email = user_email
-      log.info("auth_success", source="cached_session", email=user_email)
+      self._current_user_name = self.name  # Use the bot's display name
+      log.info("auth_success", source="cached_session", email=user_email, display_name=self.name)
       return
     except Exception as e:
       log.info("no_cached_session", reason=str(e))
@@ -195,7 +204,8 @@ class ChatClient:
     try:
       await self.roomz_client.connect(session_token=token)
       self._current_user_email = login
-      log.info("auth_success", source="interactive", email=login)
+      self._current_user_name = self.name  # Use the bot's display name
+      log.info("auth_success", source="interactive", email=login, display_name=self.name)
     except Exception as e:
       log.error("connection_failed", token="[REDACTED]", error=str(e))
       raise AuthenticationError(f"Failed to connect with token: {e}") from e
@@ -281,12 +291,25 @@ class ChatClient:
     self.roomz_client.on("disconnect", self._on_roomz_disconnect)
 
   def _register_agent_handlers(self) -> None:
-    """Register handlers for Yoker agent events."""
-    # Agent should have add_event_handler method
+    """Register handlers for Yoker agent events.
+
+    Yoker Agent's add_event_handler takes a single handler that receives
+    ALL events. The handler must filter by event type using isinstance().
+    """
     if hasattr(self.agent, "add_event_handler"):
-      self.agent.add_event_handler("ContentChunk", self._on_agent_content_chunk)
-      self.agent.add_event_handler("ContentEnd", self._on_agent_content_end)
-      self.agent.add_event_handler("Error", self._on_agent_error)
+      # Import event types for filtering
+      from yoker.events import ContentChunkEvent, ContentEndEvent, ErrorEvent
+
+      def event_handler(event: Any) -> None:
+        """Dispatch events to appropriate handlers based on type."""
+        if isinstance(event, ContentChunkEvent):
+          self._on_agent_content_chunk(event)
+        elif isinstance(event, ContentEndEvent):
+          self._on_agent_content_end(event)
+        elif isinstance(event, ErrorEvent):
+          self._on_agent_error(event)
+
+      self.agent.add_event_handler(event_handler)
 
   # =========================================================================
   # Message Filtering
@@ -310,9 +333,10 @@ class ChatClient:
     # Extract sender email
     sender_email = data.get("user", {}).get("email", "")
 
-    # Filter 1: Ignore own messages
-    if sender_email and sender_email == self._current_user_email:
-      log.debug("filtered_own_message", sender=sender_email)
+    # Filter 1: Ignore own messages (by display name only)
+    sender_name = data.get("user", {}).get("display_name") or data.get("user", {}).get("name", "")
+    if self._current_user_name and sender_name and sender_name == self._current_user_name:
+      log.info("filtered_own_message", sender_name=sender_name, bot_name=self._current_user_name)
       return False
 
     # Filter 2: Rate limiting
@@ -323,15 +347,15 @@ class ChatClient:
     # Filter 3: Check for mention trigger
     content = data.get("content", "")
     if self.respond_to_all:
-      log.debug("processing_all_messages", sender=sender_email)
+      log.info("processing_all_messages", sender=sender_email)
       return True
 
     # Check mention triggers
     if self._contains_mention(content):
-      log.debug("message_mentioned", sender=sender_email, content_preview=content[:50])
+      log.info("message_mentioned", sender=sender_email, content_preview=content[:50])
       return True
 
-    log.debug("filtered_unmentioned_message", sender=sender_email)
+    log.info("filtered_unmentioned_message", sender=sender_email, content_preview=content[:50])
     return False
 
   def _contains_mention(self, content: str) -> bool:
@@ -357,7 +381,7 @@ class ChatClient:
       # Match trigger followed by: whitespace, end of string, or punctuation (not hyphen)
       # This prevents "@bot-user" from matching "@bot"
       # Pattern: trigger followed by (whitespace | end | punctuation except hyphen)
-      pattern = rf'{re.escape(trigger_lower)}(?:\s|$|[!\"#$%&\'()*+,./:;<=>?@\[\\\]^_`{{|}}~])'
+      pattern = rf"{re.escape(trigger_lower)}(?:\s|$|[!\"#$%&\'()*+,./:;<=>?@\[\\\]^_`{{|}}~])"
       if re.search(pattern, normalized):
         return True
 
@@ -379,9 +403,9 @@ class ChatClient:
       Normalized content
     """
     # Unicode NFC normalization
-    normalized = unicodedata.normalize('NFC', content)
+    normalized = unicodedata.normalize("NFC", content)
     # Remove zero-width characters
-    normalized = re.sub(r'[​-‏ - ﻿]', '', normalized)
+    normalized = re.sub(r"[​-‏ - ﻿]", "", normalized)
     return normalized.lower()
 
   def _extract_message(self, content: str) -> str:
@@ -404,8 +428,8 @@ class ChatClient:
     # Remove mention triggers
     for trigger in self.mention_triggers:
       # Remove trigger with surrounding whitespace
-      pattern = rf'\s*{re.escape(trigger)}\s*'
-      message = re.sub(pattern, ' ', message, flags=re.IGNORECASE)
+      pattern = rf"\s*{re.escape(trigger)}\s*"
+      message = re.sub(pattern, " ", message, flags=re.IGNORECASE)
 
     # Strip control characters (security: prevents log injection, terminal manipulation)
     message = self._strip_control_characters(message)
@@ -435,11 +459,11 @@ class ChatClient:
       Sanitized text
     """
     # Remove null bytes
-    text = text.replace('\x00', '')
+    text = text.replace("\x00", "")
     # Remove ANSI escape sequences (replace with space to preserve word boundaries)
-    text = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', ' ', text)
+    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", " ", text)
     # Remove other control characters (except newline, tab, carriage return)
-    text = ''.join(char for char in text if char >= ' ' or char in '\n\t\r')
+    text = "".join(char for char in text if char >= " " or char in "\n\t\r")
     return text
 
   def _contains_instruction_override(self, message: str) -> bool:
@@ -473,10 +497,7 @@ class ChatClient:
       try:
         # Wait for next message with timeout to check _running
         try:
-          message = await asyncio.wait_for(
-            self._message_queue.get(),
-            timeout=1.0
-          )
+          message = await asyncio.wait_for(self._message_queue.get(), timeout=1.0)
         except asyncio.TimeoutError:
           continue
 
@@ -511,9 +532,17 @@ class ChatClient:
       return
 
     # Log incoming message
-    sender = data.get("user", {}).get("email", "unknown")
+    sender_email = data.get("user", {}).get("email", "unknown")
+    sender_name = data.get("user", {}).get("name", data.get("user", {}).get("display_name", ""))
     content = data.get("content", "")
-    log.info("message_received", sender=sender, content=content[:100])
+    log.info(
+      "message_received",
+      sender_email=sender_email,
+      sender_name=sender_name,
+      content=content[:100],
+      bot_email=self._current_user_email,
+      bot_name=self._current_user_name,
+    )
 
     # Apply filter pipeline
     if not self._should_process_message(data):
@@ -525,7 +554,7 @@ class ChatClient:
     # Queue for processing
     try:
       self._message_queue.put_nowait(message)
-      log.debug("message_queued", queue_size=self._message_queue.qsize())
+      log.info("message_queued", queue_size=self._message_queue.qsize(), message_preview=message[:50])
     except asyncio.QueueFull:
       log.warning("queue_full", action="dropping_message")
       # Optionally send feedback to user
@@ -557,14 +586,26 @@ class ChatClient:
     self._response_complete = asyncio.get_event_loop().create_future()
 
     # Process through agent (events will be captured by handlers)
+    # Note: Yoker Agent's process() is synchronous and emits events during processing.
+    # For async mocks in tests, we handle both sync and async process methods.
     try:
-      await asyncio.wait_for(
-        self.agent.process(message),
-        timeout=self.processing_timeout_seconds
-      )
+      # Check if process is a coroutine function (for async mocks)
+      if asyncio.iscoroutinefunction(self.agent.process):
+        # Async mock (used in tests)
+        await asyncio.wait_for(self.agent.process(message), timeout=self.processing_timeout_seconds)
+      else:
+        # Sync process (real Yoker Agent) - run in thread pool to not block asyncio
+        loop = asyncio.get_event_loop()
+        await asyncio.wait_for(
+          loop.run_in_executor(None, self.agent.process, message),
+          timeout=self.processing_timeout_seconds,
+        )
 
-      # Wait for ContentEnd event
-      await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
+      # Wait for ContentEnd event and get the response
+      response = await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
+
+      # Send the response to the chat
+      await self._send_response(response)
     except asyncio.TimeoutError:
       log.warning("agent_timeout", message_preview=message[:50])
       await self._send_error_response("I'm taking too long to respond. Please try again.")
@@ -591,7 +632,7 @@ class ChatClient:
     Args:
       event: ContentChunk event from agent
     """
-    chunk_text = event.text if hasattr(event, 'text') else str(event)
+    chunk_text = event.text if hasattr(event, "text") else str(event)
     self._response_buffer.append(chunk_text)
     log.debug("chunk_received", chunk_preview=chunk_text[:20])
 
@@ -612,9 +653,6 @@ class ChatClient:
     if self._response_complete and not self._response_complete.done():
       self._response_complete.set_result(response)
 
-    # Send the response
-    asyncio.create_task(self._send_response(response))
-
   def _on_agent_error(self, event: Any) -> None:
     """
     Handle Error events from the agent.
@@ -624,7 +662,7 @@ class ChatClient:
     Args:
       event: Error event from agent
     """
-    error_message = event.message if hasattr(event, 'message') else str(event)
+    error_message = event.message if hasattr(event, "message") else str(event)
     log.error("agent_error", error=error_message)
 
     # Signal completion with error

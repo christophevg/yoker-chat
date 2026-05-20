@@ -30,7 +30,7 @@ class SessionCache:
       },
       "metadata": {
         "last_used": datetime.now().isoformat(),
-      }
+      },
     }
 
     content = json.dumps(data, indent=2).encode("utf-8")
@@ -39,11 +39,7 @@ class SessionCache:
     # O_WRONLY: open for writing
     # O_CREAT: create if it doesn't exist
     # O_TRUNC: truncate if it exists
-    fd = os.open(
-      str(self.cache_path),
-      os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-      0o600
-    )
+    fd = os.open(str(self.cache_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 
     try:
       with os.fdopen(fd, "wb") as f:
