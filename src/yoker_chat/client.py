@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from roomz import AsyncClient
 
-log = structlog.get_logger()
+log = structlog.get_logger().bind(component="chat-client")
 
 
 class AuthenticationError(Exception):
@@ -605,6 +605,7 @@ class ChatClient:
       response = await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
 
       # Send the response to the chat
+      log.info("sending_response", length=len(response), preview=response[:100])
       await self._send_response(response)
     except asyncio.TimeoutError:
       log.warning("agent_timeout", message_preview=message[:50])

@@ -35,11 +35,19 @@ def redaction_processor(_, __, event_dict: dict) -> dict:
   return event_dict
 
 
+def component_processor(_, __, event_dict: dict) -> dict:
+  """Add component name to log events if not present."""
+  if "component" not in event_dict:
+    event_dict["component"] = "yoker-chat"
+  return event_dict
+
+
 def get_default_processors(log_format: str) -> list[object]:
   """Get default structlog processors based on format."""
   processors = [
     structlog.processors.TimeStamper(fmt="iso"),
     structlog.processors.add_log_level,
+    component_processor,
     redaction_processor,
   ]
 

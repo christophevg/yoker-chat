@@ -17,7 +17,7 @@ from yoker_chat.validation import (
   validate_tool_capabilities,
 )
 
-log = structlog.get_logger()
+log = structlog.get_logger().bind(component="cli")
 
 
 def parse_args() -> argparse.Namespace:
@@ -326,10 +326,13 @@ async def _run_client(args: argparse.Namespace) -> None:
   # ─────────────────────────────────────────────────────────────────────────
   agent_name = args.name or getattr(agent_definition, "name", "ChatBot")
 
+  # Expand ~ in session cache path
+  session_cache_path = str(Path(args.session_cache).expanduser())
+
   client = ChatClient(
     server_url=args.server_url,
     agent=agent,
-    session_cache_path=args.session_cache,
+    session_cache_path=session_cache_path,
     name=agent_name,
     mention_triggers=args.mention_trigger,
   )
