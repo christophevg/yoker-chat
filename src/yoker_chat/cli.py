@@ -100,24 +100,32 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
 
 async def _run_client(args: argparse.Namespace) -> None:
   """Initialize and run the chat client."""
-  # In a real implementation, we would load the agent here.
-  # For now, we use a mock agent or just pass None.
-  agent = None
+  # In a real implementation, we would load the agent from the definition file.
+  # For now, use a mock agent for testing.
+  # TODO: Implement agent loading from --agent argument
+  from yoker_chat.mock_agent import MockAgent
+
+  agent_name = args.name or "ChatBot"
+  agent = MockAgent(name=agent_name)
 
   client = ChatClient(
     server_url=args.server_url,
     agent=agent,
     session_cache_path=args.session_cache,
     name=args.name,
+    mention_triggers=args.mention_trigger,
   )
 
   try:
     await client.authenticate(login=args.login, token=args.token)
     print("✓ Authenticated and connected to chat room")
 
-    # Keep the client running (in a real app, this would be the event loop for messages)
-    # For Task 1.2, we just need to verify authentication.
-    # await client.start() # This would be implemented in Task 1.3
+    # Start listening for messages
+    await client.start()
+    print("✓ Listening for messages... (Press Ctrl+C to exit)")
+
+    # Keep running until interrupted
+    await asyncio.Event().wait()
   finally:
     await client.disconnect()
 

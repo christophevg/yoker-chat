@@ -12,8 +12,6 @@ from typing import Any
 import structlog
 from roomz import AsyncClient
 
-from yoker_chat.session import SessionCache
-
 log = structlog.get_logger()
 
 
@@ -97,7 +95,7 @@ class ChatClient:
     Args:
       server_url: Roomz server URL
       agent: Yoker Agent instance
-      session_cache_path: Path to session cache file
+      session_cache_path: Path to session cache file (passed to Roomz)
       name: Display name for the bot
       mention_triggers: List of mention triggers (default: ["@bot"])
       respond_to_all: If True, respond to all messages regardless of mention
@@ -114,11 +112,12 @@ class ChatClient:
     self.max_message_size = max_message_size
     self.processing_timeout_seconds = processing_timeout_seconds
 
-    # Roomz client (transport layer)
-    self.roomz_client = AsyncClient(server_url=self.server_url)
-
-    # Session persistence
-    self.cache = SessionCache(session_cache_path)
+    # Roomz client with native session caching
+    self.roomz_client = AsyncClient(
+      server_url=self.server_url,
+      session_cache_file=session_cache_path,
+      display_name=name,
+    )
 
     # Message processing
     self._message_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=max_queue_size)
@@ -154,52 +153,52 @@ class ChatClient:
   ) -> None:
     """
     Orchestrate the authentication flow.
-    Supports cached sessions, CLI arguments, and interactive prompts.
-    """
-    # 1. Try cached session
-    cached_data = self.cache.load()
-    if cached_data:
-      session_info = cached_data.get("session")
-      if session_info:
-        log.info("attempting_cached_reconnect", email=session_info.get("email"))
-        try:
-          await self.roomz_client.connect(session_token=session_info.get("cookie"))
-          self._current_user_email = session_info.get("email")
-          log.info("auth_success", source="cached_session", email=self._current_user_email)
-          await self._set_display_name()
-          return
-        except Exception as e:
-          log.warning("cached_session_invalid", error=str(e))
-          self.cache.clear()
 
-    # 2. Handle token fallback from env var
+    Roomz AsyncClient handles session caching automatically via session_cache_file.
+    This method orchestrates:
+    1. Try connecting with cached session (handled by Roomz)
+    2. If no session, request magic link and connect with token
+    """
+    # Handle token fallback from env var
     if token is None:
       token = os.environ.get("YOKER_CHAT_TOKEN")
 
-    # 3. Interactive or Non-Interactive Flow
-    if login and token:
-      # Non-interactive: both provided
-      log.info("authenticating", email=login)
-      await self._connect_with_token(token)
-      self._current_user_email = login
-      log.info("auth_success", email=login)
-    elif login:
-      # Partial non-interactive: only email provided, need token
-      await self._request_magic_link(login)
-      token = self._prompt_for_token()
-      await self._connect_with_token(token)
-      self._current_user_email = login
-      log.info("auth_success", email=login)
-    else:
-      # Full interactive
-      login = self._prompt_for_email()
-      await self._request_magic_link(login)
-      token = self._prompt_for_token()
-      await self._connect_with_token(token)
-      self._current_user_email = login
-      log.info("auth_success", email=login)
+    # If we have a token, connect directly
+    if token:
+      log.info("authenticating_with_token")
+      try:
+        await self.roomz_client.connect(session_token=token)
+        user_email = self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+        self._current_user_email = user_email
+        log.info("auth_success", email=user_email)
+        return
+      except Exception as e:
+        log.error("token_auth_failed", error=str(e))
+        raise AuthenticationError(f"Failed to authenticate with token: {e}") from e
 
-    await self._set_display_name()
+    # Try connecting with cached session (Roomz handles this automatically)
+    try:
+      log.info("attempting_cached_session")
+      await self.roomz_client.connect()
+      user_email = self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
+      self._current_user_email = user_email
+      log.info("auth_success", source="cached_session", email=user_email)
+      return
+    except Exception as e:
+      log.info("no_cached_session", reason=str(e))
+
+    # No token and no cached session - interactive flow
+    login = self._prompt_for_email()
+    await self._request_magic_link(login)
+    token = self._prompt_for_token()
+
+    try:
+      await self.roomz_client.connect(session_token=token)
+      self._current_user_email = login
+      log.info("auth_success", source="interactive", email=login)
+    except Exception as e:
+      log.error("connection_failed", token="[REDACTED]", error=str(e))
+      raise AuthenticationError(f"Failed to connect with token: {e}") from e
 
   async def _request_magic_link(self, email: str) -> None:
     """Request a magic link from the server."""
@@ -209,24 +208,6 @@ class ChatClient:
       log.error("magic_link_failed", email=email, error=result["error"])
       raise AuthenticationError(result["error"])
     log.info("magic_link_sent", email=email)
-
-  async def _connect_with_token(self, token: str) -> None:
-    """Connect to the server using a magic link token."""
-    try:
-      await self.roomz_client.connect(session_token=token)
-      # Save session on successful connect
-      user_email = self.roomz_client.user.get("email", "unknown") if self.roomz_client.user else "unknown"
-      cookie = getattr(self.roomz_client, "_cached_cookie", None)
-      self.cache.save(session_cookie=cookie, server_url=self.server_url, email=user_email)
-    except Exception as e:
-      log.error("connection_failed", token="[REDACTED]", error=str(e))
-      raise AuthenticationError(f"Failed to connect with token: {e}") from e
-
-  async def _set_display_name(self) -> None:
-    """Set the bot's display name if provided."""
-    if self.name:
-      log.info("setting_display_name", name=self.name)
-      await self.roomz_client.set_display_name(self.name)
 
   def _prompt_for_email(self) -> str:
     """Prompt for email address."""
