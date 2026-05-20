@@ -298,14 +298,19 @@ class ChatClient:
     """
     if hasattr(self.agent, "add_event_handler"):
       # Import event types for filtering
-      from yoker.events import ContentChunkEvent, ContentEndEvent, ErrorEvent
+      from yoker.events import ContentChunkEvent, ContentEndEvent, ErrorEvent, TurnEndEvent
 
       def event_handler(event: Any) -> None:
         """Dispatch events to appropriate handlers based on type."""
         if isinstance(event, ContentChunkEvent):
           self._on_agent_content_chunk(event)
         elif isinstance(event, ContentEndEvent):
-          self._on_agent_content_end(event)
+          # ContentEnd fires after each content generation
+          # We don't use it for signaling - we wait for TurnEnd instead
+          log.debug("content_end_ignored", length=len("".join(self._response_buffer)))
+        elif isinstance(event, TurnEndEvent):
+          # TurnEnd is the final event of a turn - use this to signal completion
+          self._on_agent_turn_end(event)
         elif isinstance(event, ErrorEvent):
           self._on_agent_error(event)
 
@@ -641,18 +646,36 @@ class ChatClient:
     """
     Handle ContentEnd event from the agent.
 
-    This signals that the agent has finished generating content.
-    The complete response is joined and a future is resolved.
+    Note: ContentEnd fires after each content generation, but a turn can have
+    multiple content generations (e.g., after tool calls). We don't use this
+    for signaling - we wait for TurnEnd instead.
 
     Args:
       event: ContentEnd event from agent
     """
+    # ContentEnd is ignored - we wait for TurnEnd to signal completion
+    log.debug("content_end", length=len("".join(self._response_buffer)))
+
+  def _on_agent_turn_end(self, event: Any) -> None:
+    """
+    Handle TurnEnd event from the agent.
+
+    This signals that the agent has finished the entire turn.
+    The complete response is joined and the future is resolved.
+
+    Args:
+      event: TurnEnd event from agent
+    """
     response = "".join(self._response_buffer)
-    log.info("response_complete", length=len(response))
+    buffer_chunks = len(self._response_buffer)
+    log.info("turn_end", length=len(response), chunks=buffer_chunks)
 
     # Signal completion to waiting coroutine
     if self._response_complete and not self._response_complete.done():
+      log.info("future_set", length=len(response))
       self._response_complete.set_result(response)
+    else:
+      log.warning("future_not_set", future_done=self._response_complete.done() if self._response_complete else None)
 
   def _on_agent_error(self, event: Any) -> None:
     """

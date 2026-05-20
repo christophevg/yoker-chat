@@ -307,20 +307,20 @@ async def test_agent_response_content_chunk_buffering(chat_client):
 @pytest.mark.asyncio
 async def test_agent_response_complete_on_content_end(chat_client):
   """
-  Given: Agent has emitted ContentChunk events and ContentEnd event
+  Given: Agent has emitted ContentChunk events and TurnEnd event
   When: _process_single_message processes the message
   Then: The complete buffered response should be sent to Roomz via client.send()
   """
-  # Set up the mock agent to emit ContentEnd after processing
-  from yoker.events import ContentChunkEvent, ContentEndEvent
+  # Set up the mock agent to emit TurnEnd after processing
+  from yoker.events import ContentChunkEvent, TurnEndEvent
 
   async def mock_process(message):
     # Emit some chunks
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="Hello"))
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text=" there"))
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="!"))
-    # Emit ContentEnd (requires total_length)
-    chat_client._on_agent_content_end(ContentEndEvent(type="content_end", total_length=12))
+    # Emit TurnEnd to signal completion
+    chat_client._on_agent_turn_end(TurnEndEvent(type="turn_end", response="Hello there!"))
     return "Hello there!"
 
   chat_client.agent.process = AsyncMock(side_effect=mock_process)
