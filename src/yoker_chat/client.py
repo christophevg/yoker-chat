@@ -126,6 +126,7 @@ class ChatClient:
     self._processing_lock = asyncio.Lock()
     self._response_buffer: list[str] = []
     self._response_complete: asyncio.Future[str] | None = None
+    self._main_loop: asyncio.AbstractEventLoop | None = None  # Set during processing for thread pool streaming
 
     # Worker task reference
     self._queue_worker: asyncio.Task | None = None
@@ -295,21 +296,32 @@ class ChatClient:
 
     Yoker Agent's add_event_handler takes a single handler that receives
     ALL events. The handler must filter by event type using isinstance().
+
+    Streaming approach: Each content generation and tool call is sent
+    immediately to the chat for a natural conversation flow.
     """
     if hasattr(self.agent, "add_event_handler"):
       # Import event types for filtering
-      from yoker.events import ContentChunkEvent, ContentEndEvent, ErrorEvent, TurnEndEvent
+      from yoker.events import (
+        ContentChunkEvent,
+        ContentEndEvent,
+        ErrorEvent,
+        ToolCallEvent,
+        ToolResultEvent,
+        TurnEndEvent,
+      )
 
       def event_handler(event: Any) -> None:
         """Dispatch events to appropriate handlers based on type."""
         if isinstance(event, ContentChunkEvent):
           self._on_agent_content_chunk(event)
         elif isinstance(event, ContentEndEvent):
-          # ContentEnd fires after each content generation
-          # We don't use it for signaling - we wait for TurnEnd instead
-          log.debug("content_end_ignored", length=len("".join(self._response_buffer)))
+          self._on_agent_content_end(event)
+        elif isinstance(event, ToolCallEvent):
+          self._on_agent_tool_call(event)
+        elif isinstance(event, ToolResultEvent):
+          self._on_agent_tool_result(event)
         elif isinstance(event, TurnEndEvent):
-          # TurnEnd is the final event of a turn - use this to signal completion
           self._on_agent_turn_end(event)
         elif isinstance(event, ErrorEvent):
           self._on_agent_error(event)
@@ -570,10 +582,13 @@ class ChatClient:
 
     This method:
     1. Clears the response buffer
-    2. Checks for prompt injection
-    3. Sends the message to the agent
-    4. Waits for response completion (via ContentEnd event)
-    5. Sends the buffered response to Roomz
+    2. Stores the main event loop (for streaming from thread pool)
+    3. Checks for prompt injection
+    4. Sends the message to the agent
+    5. Waits for turn completion (TurnEnd event)
+
+    During processing, ContentEnd events send messages immediately via
+    run_coroutine_threadsafe, enabling streaming responses.
 
     Args:
       message: Cleaned message content
@@ -587,10 +602,13 @@ class ChatClient:
     # Clear response buffer
     self._response_buffer.clear()
 
-    # Create a future for response completion
+    # Create a future for turn completion
     self._response_complete = asyncio.get_event_loop().create_future()
 
-    # Process through agent (events will be captured by handlers)
+    # Store the main loop for streaming from thread pool
+    self._main_loop = asyncio.get_event_loop()
+
+    # Process through agent (events will send responses immediately)
     # Note: Yoker Agent's process() is synchronous and emits events during processing.
     # For async mocks in tests, we handle both sync and async process methods.
     try:
@@ -600,18 +618,14 @@ class ChatClient:
         await asyncio.wait_for(self.agent.process(message), timeout=self.processing_timeout_seconds)
       else:
         # Sync process (real Yoker Agent) - run in thread pool to not block asyncio
-        loop = asyncio.get_event_loop()
         await asyncio.wait_for(
-          loop.run_in_executor(None, self.agent.process, message),
+          self._main_loop.run_in_executor(None, self.agent.process, message),
           timeout=self.processing_timeout_seconds,
         )
 
-      # Wait for ContentEnd event and get the response
-      response = await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
+      # Wait for TurnEnd event to signal completion
+      await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
 
-      # Send the response to the chat
-      log.info("sending_response", length=len(response), preview=response[:100])
-      await self._send_response(response)
     except asyncio.TimeoutError:
       log.warning("agent_timeout", message_preview=message[:50])
       await self._send_error_response("I'm taking too long to respond. Please try again.")
@@ -623,6 +637,7 @@ class ChatClient:
       await self._send_error_response("An unexpected error occurred.")
     finally:
       self._response_complete = None
+      self._main_loop = None
 
   # =========================================================================
   # Agent Response Capture
@@ -646,36 +661,76 @@ class ChatClient:
     """
     Handle ContentEnd event from the agent.
 
-    Note: ContentEnd fires after each content generation, but a turn can have
-    multiple content generations (e.g., after tool calls). We don't use this
-    for signaling - we wait for TurnEnd instead.
+    Send the buffered content immediately via run_coroutine_threadsafe.
 
     Args:
       event: ContentEnd event from agent
     """
-    # ContentEnd is ignored - we wait for TurnEnd to signal completion
-    log.debug("content_end", length=len("".join(self._response_buffer)))
+    response = "".join(self._response_buffer)
+    buffer_chunks = len(self._response_buffer)
+    log.info("content_end", length=len(response), chunks=buffer_chunks)
+
+    # Send immediately if we have a main loop (streaming)
+    if response.strip() and self._main_loop:
+      asyncio.run_coroutine_threadsafe(self._send_response(response), self._main_loop)
+
+    # Clear buffer for next content generation
+    self._response_buffer.clear()
+
+  def _on_agent_tool_call(self, event: Any) -> None:
+    """
+    Handle ToolCall event from the agent.
+
+    Send a message about the tool being called.
+
+    Args:
+      event: ToolCall event from agent
+    """
+    tool_name = event.tool if hasattr(event, "tool") else "unknown"
+    log.info("tool_call", tool=tool_name)
+
+    # Send immediately if we have a main loop (streaming)
+    if self._main_loop:
+      message = f"🔧 Calling `{tool_name}`..."
+      asyncio.run_coroutine_threadsafe(self._send_response(message), self._main_loop)
+
+  def _on_agent_tool_result(self, event: Any) -> None:
+    """
+    Handle ToolResult event from the agent.
+
+    Send a message about the tool result.
+
+    Args:
+      event: ToolResult event from agent
+    """
+    tool_name = event.tool if hasattr(event, "tool") else "unknown"
+    success = not hasattr(event, "error") or not event.error
+    log.info("tool_result", tool=tool_name, success=success)
+
+    # Send immediately if we have a main loop (streaming)
+    if self._main_loop:
+      if success:
+        message = f"✅ `{tool_name}` completed"
+      else:
+        error = event.error if hasattr(event, "error") else "unknown error"
+        message = f"❌ `{tool_name}` failed: {error[:100]}"
+      asyncio.run_coroutine_threadsafe(self._send_response(message), self._main_loop)
 
   def _on_agent_turn_end(self, event: Any) -> None:
     """
     Handle TurnEnd event from the agent.
 
     This signals that the agent has finished the entire turn.
-    The complete response is joined and the future is resolved.
+    Signal completion so processing can continue.
 
     Args:
       event: TurnEnd event from agent
     """
-    response = "".join(self._response_buffer)
-    buffer_chunks = len(self._response_buffer)
-    log.info("turn_end", length=len(response), chunks=buffer_chunks)
+    log.info("turn_end", response_length=len("".join(self._response_buffer)))
 
-    # Signal completion to waiting coroutine
+    # Signal completion if future is waiting
     if self._response_complete and not self._response_complete.done():
-      log.info("future_set", length=len(response))
-      self._response_complete.set_result(response)
-    else:
-      log.warning("future_not_set", future_done=self._response_complete.done() if self._response_complete else None)
+      self._response_complete.set_result("")
 
   def _on_agent_error(self, event: Any) -> None:
     """
