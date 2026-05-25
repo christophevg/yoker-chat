@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -108,7 +109,7 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
   )
 
 
-def load_yoker_config(config_path: Path) -> object:
+def load_yoker_config(config_path: Path) -> Any:
   """Load Yoker configuration from TOML file.
 
   Args:
@@ -134,7 +135,7 @@ def load_yoker_config(config_path: Path) -> object:
     raise
 
 
-def load_yoker_agent_definition(agent_path: Path) -> object:
+def load_yoker_agent_definition(agent_path: Path) -> Any:
   """Load agent definition from Markdown file.
 
   Args:
@@ -174,8 +175,8 @@ def load_yoker_agent_definition(agent_path: Path) -> object:
 
 def create_context_manager(
   resume: bool,
-  config: object,
-) -> object | None:
+  config: Any,
+) -> Any:
   """Create context manager for session persistence.
 
   Args:
@@ -362,7 +363,7 @@ async def _run_client(args: argparse.Namespace) -> None:
     # End agent session if supported
     if hasattr(agent, "end_session"):
       try:
-        agent.end_session(reason="quit")
+        await agent.end_session(reason="quit")
         log.info("session_ended")
       except Exception as e:
         log.warning("session_end_failed", error=str(e))

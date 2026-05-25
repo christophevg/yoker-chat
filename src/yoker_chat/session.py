@@ -55,7 +55,8 @@ class SessionCache:
 
     try:
       with open(self.cache_path) as f:
-        return json.load(f)
+        data: dict[str, Any] = json.load(f)
+        return data
     except (OSError, json.JSONDecodeError):
       return None
 

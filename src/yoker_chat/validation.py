@@ -249,7 +249,7 @@ def audit_context_permissions(context_path: Path) -> list[str]:
   Returns:
     List of security issues found.
   """
-  issues = []
+  issues: list[str] = []
 
   if not context_path.exists():
     return issues

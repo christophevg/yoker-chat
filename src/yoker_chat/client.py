@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
-from roomz import AsyncClient
+from roomz import AsyncClient  # type: ignore[import-untyped]
 
 log = structlog.get_logger().bind(component="chat-client")
 
@@ -128,7 +128,7 @@ class ChatClient:
     self._response_complete: asyncio.Future[str] | None = None
 
     # Worker task reference
-    self._queue_worker: asyncio.Task | None = None
+    self._queue_worker: asyncio.Task[None] | None = None
     self._running = False
 
     # Current user info (for filtering own messages)
@@ -576,7 +576,9 @@ class ChatClient:
     # Queue for processing
     try:
       self._message_queue.put_nowait(message)
-      log.info("message_queued", queue_size=self._message_queue.qsize(), message_preview=message[:50])
+      log.info(
+        "message_queued", queue_size=self._message_queue.qsize(), message_preview=message[:50]
+      )
     except asyncio.QueueFull:
       log.warning("queue_full", action="dropping_message")
       # Optionally send feedback to user

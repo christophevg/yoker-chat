@@ -34,7 +34,7 @@ lint: env-dev ## Check code for linting issues
 	uv run ruff check src tests
 
 typecheck: env-dev ## Run type checking
-	uv run mypy src
+	uv run mypy --strict src
 
 check: format lint typecheck test ## Run all quality checks
 

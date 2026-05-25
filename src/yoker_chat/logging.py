@@ -3,7 +3,9 @@
 import structlog
 
 
-def redaction_processor(_, __, event_dict: dict) -> dict:
+def redaction_processor(
+  _logger: object, _name: str, event_dict: dict[str, object]
+) -> dict[str, object]:
   """
   Redact sensitive information from log events.
 
@@ -35,7 +37,9 @@ def redaction_processor(_, __, event_dict: dict) -> dict:
   return event_dict
 
 
-def component_processor(_, __, event_dict: dict) -> dict:
+def component_processor(
+  _logger: object, _name: str, event_dict: dict[str, object]
+) -> dict[str, object]:
   """Add component name to log events if not present."""
   if "component" not in event_dict:
     event_dict["component"] = "yoker-chat"
