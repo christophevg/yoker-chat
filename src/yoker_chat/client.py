@@ -126,7 +126,6 @@ class ChatClient:
     self._processing_lock = asyncio.Lock()
     self._response_buffer: list[str] = []
     self._response_complete: asyncio.Future[str] | None = None
-    self._main_loop: asyncio.AbstractEventLoop | None = None  # Set during processing for thread pool streaming
 
     # Worker task reference
     self._queue_worker: asyncio.Task | None = None
@@ -297,6 +296,9 @@ class ChatClient:
     Yoker Agent's add_event_handler takes a single handler that receives
     ALL events. The handler must filter by event type using isinstance().
 
+    With yoker>=0.3.0, event handlers can be async, allowing direct await
+    of I/O operations like sending messages to Roomz.
+
     Streaming approach: Each content generation and tool call is sent
     immediately to the chat for a natural conversation flow.
     """
@@ -311,16 +313,19 @@ class ChatClient:
         TurnEndEvent,
       )
 
-      def event_handler(event: Any) -> None:
-        """Dispatch events to appropriate handlers based on type."""
+      async def event_handler(event: Any) -> None:
+        """Dispatch events to appropriate handlers based on type.
+
+        Async handler allows direct await of I/O operations.
+        """
         if isinstance(event, ContentChunkEvent):
           self._on_agent_content_chunk(event)
         elif isinstance(event, ContentEndEvent):
-          self._on_agent_content_end(event)
+          await self._on_agent_content_end(event)
         elif isinstance(event, ToolCallEvent):
-          self._on_agent_tool_call(event)
+          await self._on_agent_tool_call(event)
         elif isinstance(event, ToolResultEvent):
-          self._on_agent_tool_result(event)
+          await self._on_agent_tool_result(event)
         elif isinstance(event, TurnEndEvent):
           self._on_agent_turn_end(event)
         elif isinstance(event, ErrorEvent):
@@ -582,13 +587,12 @@ class ChatClient:
 
     This method:
     1. Clears the response buffer
-    2. Stores the main event loop (for streaming from thread pool)
-    3. Checks for prompt injection
-    4. Sends the message to the agent
-    5. Waits for turn completion (TurnEnd event)
+    2. Checks for prompt injection
+    3. Sends the message to the agent
+    4. Waits for turn completion (TurnEnd event)
 
-    During processing, ContentEnd events send messages immediately via
-    run_coroutine_threadsafe, enabling streaming responses.
+    With yoker>=0.3.0, agent.process() is async and event handlers
+    can be async, allowing direct await of I/O operations.
 
     Args:
       message: Cleaned message content
@@ -605,23 +609,10 @@ class ChatClient:
     # Create a future for turn completion
     self._response_complete = asyncio.get_event_loop().create_future()
 
-    # Store the main loop for streaming from thread pool
-    self._main_loop = asyncio.get_event_loop()
-
     # Process through agent (events will send responses immediately)
-    # Note: Yoker Agent's process() is synchronous and emits events during processing.
-    # For async mocks in tests, we handle both sync and async process methods.
     try:
-      # Check if process is a coroutine function (for async mocks)
-      if asyncio.iscoroutinefunction(self.agent.process):
-        # Async mock (used in tests)
-        await asyncio.wait_for(self.agent.process(message), timeout=self.processing_timeout_seconds)
-      else:
-        # Sync process (real Yoker Agent) - run in thread pool to not block asyncio
-        await asyncio.wait_for(
-          self._main_loop.run_in_executor(None, self.agent.process, message),
-          timeout=self.processing_timeout_seconds,
-        )
+      # Yoker Agent's process() is now async (yoker>=0.3.0)
+      await asyncio.wait_for(self.agent.process(message), timeout=self.processing_timeout_seconds)
 
       # Wait for TurnEnd event to signal completion
       await asyncio.wait_for(self._response_complete, timeout=self.processing_timeout_seconds)
@@ -637,7 +628,6 @@ class ChatClient:
       await self._send_error_response("An unexpected error occurred.")
     finally:
       self._response_complete = None
-      self._main_loop = None
 
   # =========================================================================
   # Agent Response Capture
@@ -657,11 +647,11 @@ class ChatClient:
     self._response_buffer.append(chunk_text)
     log.debug("chunk_received", chunk_preview=chunk_text[:20])
 
-  def _on_agent_content_end(self, event: Any) -> None:
+  async def _on_agent_content_end(self, event: Any) -> None:
     """
     Handle ContentEnd event from the agent.
 
-    Send the buffered content immediately via run_coroutine_threadsafe.
+    Send the buffered content immediately via direct await.
 
     Args:
       event: ContentEnd event from agent
@@ -670,14 +660,14 @@ class ChatClient:
     buffer_chunks = len(self._response_buffer)
     log.info("content_end", length=len(response), chunks=buffer_chunks)
 
-    # Send immediately if we have a main loop (streaming)
-    if response.strip() and self._main_loop:
-      asyncio.run_coroutine_threadsafe(self._send_response(response), self._main_loop)
+    # Send immediately (direct await, no threading needed)
+    if response.strip():
+      await self._send_response(response)
 
     # Clear buffer for next content generation
     self._response_buffer.clear()
 
-  def _on_agent_tool_call(self, event: Any) -> None:
+  async def _on_agent_tool_call(self, event: Any) -> None:
     """
     Handle ToolCall event from the agent.
 
@@ -689,12 +679,11 @@ class ChatClient:
     tool_name = event.tool if hasattr(event, "tool") else "unknown"
     log.info("tool_call", tool=tool_name)
 
-    # Send immediately if we have a main loop (streaming)
-    if self._main_loop:
-      message = f"🔧 Calling `{tool_name}`..."
-      asyncio.run_coroutine_threadsafe(self._send_response(message), self._main_loop)
+    # Send immediately (direct await)
+    message = f"🔧 Calling `{tool_name}`..."
+    await self._send_response(message)
 
-  def _on_agent_tool_result(self, event: Any) -> None:
+  async def _on_agent_tool_result(self, event: Any) -> None:
     """
     Handle ToolResult event from the agent.
 
@@ -707,14 +696,13 @@ class ChatClient:
     success = not hasattr(event, "error") or not event.error
     log.info("tool_result", tool=tool_name, success=success)
 
-    # Send immediately if we have a main loop (streaming)
-    if self._main_loop:
-      if success:
-        message = f"✅ `{tool_name}` completed"
-      else:
-        error = event.error if hasattr(event, "error") else "unknown error"
-        message = f"❌ `{tool_name}` failed: {error[:100]}"
-      asyncio.run_coroutine_threadsafe(self._send_response(message), self._main_loop)
+    # Send immediately (direct await)
+    if success:
+      message = f"✅ `{tool_name}` completed"
+    else:
+      error = event.error if hasattr(event, "error") else "unknown error"
+      message = f"❌ `{tool_name}` failed: {error[:100]}"
+    await self._send_response(message)
 
   def _on_agent_turn_end(self, event: Any) -> None:
     """

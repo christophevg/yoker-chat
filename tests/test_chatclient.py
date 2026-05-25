@@ -319,8 +319,8 @@ async def test_agent_response_complete_on_content_end(chat_client):
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="Hello"))
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text=" there"))
     chat_client._on_agent_content_chunk(ContentChunkEvent(type="content_chunk", text="!"))
-    # Emit ContentEnd - this triggers sending the response
-    chat_client._on_agent_content_end(ContentEndEvent(type="content_end", total_length=12))
+    # Emit ContentEnd - this triggers sending the response (now async)
+    await chat_client._on_agent_content_end(ContentEndEvent(type="content_end", total_length=12))
     # Emit TurnEnd to signal completion
     chat_client._on_agent_turn_end(TurnEndEvent(type="turn_end", response="Hello there!"))
     return "Hello there!"
@@ -393,8 +393,8 @@ async def test_integration_end_to_end_message_flow(chat_client):
     event2 = MagicMock()
     event2.text = "!"
     chat_client._on_agent_content_chunk(event2)
-    # Simulate content end
-    chat_client._on_agent_content_end(MagicMock())
+    # Simulate content end (now async)
+    await chat_client._on_agent_content_end(MagicMock())
 
   chat_client.agent.process = mock_process
   chat_client.roomz_client.send = AsyncMock()

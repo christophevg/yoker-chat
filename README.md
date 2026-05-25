@@ -1,9 +1,12 @@
 # Yoker Chat Client
 
-[![PyPI version](https://img.shields.io/pypi/v/yoker-chat.svg)](https://pypi.org/project/yoker-chat/)
-[![Python](https://img.shields.io/pypi/pyversions/yoker-chat.svg)](https://pypi.org/project/yoker-chat/)
-[![License](https://img.shields.io/pypi/l/yoker-chat.svg)](https://github.com/christophevg/yoker-chat/blob/main/LICENSE)
-[![CI](https://github.com/christophevg/yoker-chat/actions/workflows/test.yml/badge.svg)](https://github.com/christophevg/yoker-chat/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/yoker-chat.svg)][pypi]
+[![Python](https://img.shields.io/pypi/pyversions/yoker-chat.svg)][pypi]
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)][uv]
+[![CI](https://img.shields.io/github/actions/workflow/status/christophevg/yoker-chat/test.yml.svg)][ci]
+[![Coverage](https://img.shields.io/coveralls/github/christophevg/yoker-chat.svg)][coveralls]
+[![License](https://img.shields.io/github/license/christophevg/yoker-chat.svg)][license]
+[![Agentic](https://img.shields.io/badge/workflow-agentic-blueviolet?style=flat-square)](https://christophe.vg/about/Agentic-Workflow)
 
 A standalone client that bridges Roomz chat rooms to Yoker agents, enabling AI agents to participate in chat rooms as bot participants.
 
@@ -155,3 +158,9 @@ Full documentation available at [yoker-chat.readthedocs.io](https://yoker-chat.r
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+[pypi]: https://pypi.org/project/yoker-chat/
+[uv]: https://docs.astral.sh/uv/
+[ci]: https://github.com/christophevg/yoker-chat/actions
+[coveralls]: https://coveralls.io/github/christophevg/yoker-chat
+[license]: https://github.com/christophevg/yoker-chat/blob/main/LICENSE

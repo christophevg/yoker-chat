@@ -1,11 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "yoker-chat"
 version = "0.1.0"
 description = "Chat client that bridges Roomz chat rooms to Yoker agents"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "Christophe VG", email = "contact@christophe.vg" }]
+license = {text = "MIT"}
+authors = [{name = "Christophe VG", email = "contact@christophe.vg"}]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -16,8 +20,10 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Typing :: Typed",
 ]
+keywords = ["chat", "agent", "yoker", "roomz"]
+
 dependencies = [
-  "yoker>=0.2.0",
+  "yoker>=0.3.1",
   "roomz>=0.1.0",
   "structlog>=23.0.0",
   "aiohttp>=3.8.0",
@@ -25,30 +31,46 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=8.0.0",
-  "pytest-cov>=4.0.0",
-  "pytest-asyncio>=0.23.0",
-  "ruff>=0.1.0",
-  "mypy>=1.8.0",
-  "tox>=4.0.0",
-  "tox-uv>=1.0.0",
-]
 docs = [
   "sphinx>=7.0.0",
   "sphinx-rtd-theme>=2.0.0",
   "myst-parser>=2.0.0",
 ]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+  "pytest-asyncio>=0.23.0",
+  "mypy>=1.13.0",
+  "ruff>=0.8.0",
+  "tox>=4.0.0",
+  "tox-uv>=1.0.0",
+  "build>=1.0.0",
+  "twine>=6.0.0",
+  "coveralls>=3.3.0",
+]
 
 [project.scripts]
 yoker-chat = "yoker_chat:run"
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.urls]
+Homepage = "https://github.com/christophevg/yoker-chat"
+Documentation = "https://github.com/christophevg/yoker-chat#readme"
+Repository = "https://github.com/christophevg/yoker-chat"
+Issues = "https://github.com/christophevg/yoker-chat/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yoker_chat"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --cov=yoker_chat --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 100
@@ -72,21 +94,22 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["yoker_chat"]
 
-[tool.mypy]
-python_version = "3.10"
-strict = true
-warn_return_any = true
-warn_unused_ignores = true
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
+[tool.coverage.run]
+source = ["src"]
+branch = true
 
-# Local package sources
-[tool.uv.sources]
-yoker = { path = "../yoker", editable = true }
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+]
 
-# Multi-version testing
 [tool.tox]
 env_list = ["py310", "py311", "py312"]
 
@@ -98,3 +121,4 @@ commands_pre = [
   ["uv", "pip", "install", "pytest", "pytest-cov", "pytest-asyncio"],
 ]
 commands = [["pytest", "tests", "-v", "--cov=yoker_chat", "--cov-report=term-missing"]]
+
