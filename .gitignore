@@ -45,9 +45,6 @@ htmlcov/
 # Documentation
 docs/_build/
 
-# Distribution
-uv.lock
-
 # Project-specific
 *.log
 .session-cache/

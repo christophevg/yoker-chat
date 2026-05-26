@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
-from roomz import AsyncClient  # type: ignore[import-untyped]
+from roomz import AsyncClient
 
 log = structlog.get_logger().bind(component="chat-client")
 
@@ -79,7 +79,7 @@ class ChatClient:
 
   def __init__(
     self,
-    server_url: str,
+    server_url: str | None,
     agent: Any,
     session_cache_path: str,
     *,
@@ -95,7 +95,7 @@ class ChatClient:
     Initialize ChatClient.
 
     Args:
-      server_url: Roomz server URL
+      server_url: Roomz server URL (auto-discovered if None)
       agent: Yoker Agent instance
       session_cache_path: Path to session cache file (passed to Roomz)
       name: Display name for the bot
@@ -115,11 +115,22 @@ class ChatClient:
     self.processing_timeout_seconds = processing_timeout_seconds
 
     # Roomz client with native session caching
-    self.roomz_client = AsyncClient(
-      server_url=self.server_url,
-      session_cache_file=session_cache_path,
-      display_name=name,
-    )
+    # roomz 0.2.0+ uses Config for server_url and display_name
+    from roomz.client.config import Config
+
+    if server_url is not None:
+      # Explicit server_url provided
+      config = Config(server_url=server_url, display_name=name)
+      self.roomz_client = AsyncClient(
+        config=config,
+        session_cache_file=session_cache_path,
+      )
+    else:
+      # Auto-discover server_url from environment or config files
+      # Note: display_name is set separately after connection if needed
+      self.roomz_client = AsyncClient(
+        session_cache_file=session_cache_path,
+      )
 
     # Message processing
     self._message_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=max_queue_size)

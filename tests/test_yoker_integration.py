@@ -218,9 +218,9 @@ class TestAgentInitialization:
     When: The configuration is loaded
     Then: A Config object is returned with correct settings
     """
-    from yoker_chat.cli import load_yoker_config
+    from yoker import load_config
 
-    config = load_yoker_config(sample_yoker_config)
+    config = load_config(sample_yoker_config)
 
     # Verify config is loaded
     assert config is not None
@@ -237,12 +237,10 @@ class TestAgentInitialization:
     When: The configuration is loaded
     Then: ConfigurationError is raised with helpful error message
     """
-    from yoker import ConfigurationError
-
-    from yoker_chat.cli import load_yoker_config
+    from yoker import ConfigurationError, load_config
 
     with pytest.raises(ConfigurationError):
-      load_yoker_config(invalid_yoker_config)
+      load_config(invalid_yoker_config)
 
   @pytest.mark.asyncio
   async def test_load_missing_config(self, tmp_path: Path):
@@ -251,11 +249,12 @@ class TestAgentInitialization:
     When: The configuration is loaded
     Then: FileNotFoundError is raised with helpful error message
     """
-    from yoker_chat.cli import load_yoker_config
+    # Import yoker's FileNotFoundError (different from builtin)
+    from yoker import FileNotFoundError, load_config
 
     nonexistent_config = tmp_path / "nonexistent.toml"
     with pytest.raises(FileNotFoundError):
-      load_yoker_config(nonexistent_config)
+      load_config(nonexistent_config)
 
   @pytest.mark.asyncio
   async def test_load_agent_definition(self, sample_agent_definition: Path):
@@ -314,16 +313,15 @@ class TestAgentInitialization:
     When: A Yoker Agent is created with context manager
     Then: Agent is initialized with context manager for session persistence
     """
-    from yoker import Agent, ThinkingMode
+    from yoker import Agent, ThinkingMode, load_config
 
     from yoker_chat.cli import (
       create_context_manager,
       load_yoker_agent_definition,
-      load_yoker_config,
     )
 
     # Load config and definition
-    config = load_yoker_config(sample_yoker_config)
+    config = load_config(sample_yoker_config)
     agent_definition = load_yoker_agent_definition(sample_agent_definition)
 
     # Create context manager
@@ -352,12 +350,12 @@ class TestAgentInitialization:
     When: Agent is created for chat context
     Then: Thinking mode should be set to SILENT (no thinking output in chat)
     """
-    from yoker import Agent, ThinkingMode
+    from yoker import Agent, ThinkingMode, load_config
 
-    from yoker_chat.cli import load_yoker_agent_definition, load_yoker_config
+    from yoker_chat.cli import load_yoker_agent_definition
 
     # Load config and definition
-    config = load_yoker_config(sample_yoker_config)
+    config = load_config(sample_yoker_config)
     agent_definition = load_yoker_agent_definition(sample_agent_definition)
 
     # Create agent with SILENT thinking mode
@@ -804,13 +802,11 @@ class TestErrorHandling:
     When: CLI attempts to load config
     Then: Process exits with non-zero code and helpful error message
     """
-    from yoker import ConfigurationError
-
-    from yoker_chat.cli import load_yoker_config
+    from yoker import ConfigurationError, load_config
 
     # Load invalid config should raise ConfigurationError
     with pytest.raises(ConfigurationError):
-      load_yoker_config(invalid_yoker_config)
+      load_config(invalid_yoker_config)
 
 
 # ============================================================================
@@ -1249,16 +1245,15 @@ class TestIntegrationWithRealAgent:
     When: Real Yoker Agent is initialized
     Then: Agent starts successfully with correct configuration
     """
-    from yoker import Agent, ThinkingMode
+    from yoker import Agent, ThinkingMode, load_config
 
     from yoker_chat.cli import (
       create_context_manager,
       load_yoker_agent_definition,
-      load_yoker_config,
     )
 
     # Load config and definition
-    config = load_yoker_config(sample_yoker_config)
+    config = load_config(sample_yoker_config)
     agent_definition = load_yoker_agent_definition(sample_agent_definition)
 
     # Create context manager
@@ -1325,10 +1320,10 @@ class TestCLIArgumentHandling:
     When: Arguments are parsed
     Then: Config is loaded from specified path
     """
-    from yoker_chat.cli import load_yoker_config
+    from yoker import load_config
 
     # Load config from specified path
-    config = load_yoker_config(sample_yoker_config)
+    config = load_config(sample_yoker_config)
 
     # Verify config is loaded
     assert config is not None
@@ -1470,9 +1465,9 @@ class TestCLIArgumentHandling:
   @pytest.mark.asyncio
   async def test_cli_defaults_to_config_file(self, tmp_path: Path):
     """
-    Given: CLI invoked without --config in directory with yoker.toml
+    Given: CLI invoked without --config
     When: Arguments are parsed
-    Then: Default yoker.toml is loaded
+    Then: config defaults to None (auto-discovery)
     """
     from yoker_chat.cli import parse_args
 
@@ -1484,5 +1479,5 @@ class TestCLIArgumentHandling:
     ):
       args = parse_args()
 
-      # Verify default config file
-      assert args.config == "yoker.toml"
+      # Verify config defaults to None (auto-discovery)
+      assert args.config is None

@@ -30,6 +30,65 @@
   - **Design**: See [analysis/api-chatclient.md](analysis/api-chatclient.md)
   - **Satisfies**: R12-R20
 
+- [ ] **1.3.6 Dependency Upgrade and Codebase Simplification**
+  - Upgrade yoker package to latest release
+  - Upgrade roomz package to latest release
+  - Review new features from upstream releases
+  - Remove code that's now handled by upstream
+  - Evaluate what more could be delegated to upstream projects
+  - Goal: Make yoker-chat a minimal bridge between yoker.Agent and roomz.AsyncClient
+  - **Analysis**: See [analysis/upgrade-1.3.6.md](analysis/upgrade-1.3.6.md)
+  - **Satisfies**: R12-R20
+  
+  - [ ] **1.3.6.1: Upgrade Dependencies**
+    - Update pyproject.toml: yoker>=0.4.0, roomz>=0.2.0
+    - Verify imports still work after upgrade
+    - Run test suite to ensure backward compatibility
+    - **Acceptance**: Dependencies upgraded, all imports work, tests pass
+  
+  - [ ] **1.3.6.2: Implement Config Auto-Discovery**
+    - Refactor load_yoker_config() to use Config.discover()
+    - Support explicit --config path (backward compatible)
+    - Support environment variable discovery (YOKER_*)
+    - Support file discovery (./yoker.toml, ~/.yoker.toml)
+    - Update cli.py to pass None to load_yoker_config() when --config not provided
+    - **Acceptance**: Config auto-discovers from env/files, explicit path still works
+  
+  - [ ] **1.3.6.3: Make CLI Arguments Optional**
+    - Make --server-url optional (use roomz auto-discovery)
+    - Make --agent optional (use config [agents].definition)
+    - Make --config optional (use yoker auto-discovery)
+    - Update argument parsing in cli.py parse_args()
+    - **Acceptance**: All three args optional, discovery fallback works, CLI still accepts explicit values
+  
+  - [ ] **1.3.6.4: Support Agent Definition from Config**
+    - Update load_yoker_agent_definition() to accept optional agent_path
+    - Fall back to config.agents.definition when --agent not provided
+    - Provide helpful error when neither provided
+    - Update cli.py to pass agent_path=None when not specified
+    - **Acceptance**: Agent definition discovered from config, explicit --agent still works
+  
+  - [ ] **1.3.6.5: Update Client for Optional server_url**
+    - Update ChatClient.__init__() type hint: server_url: str | None
+    - Pass server_url=None to AsyncClient() for auto-discovery
+    - Verify client.py handles missing server_url gracefully
+    - **Acceptance**: ChatClient works with auto-discovered server URL
+  
+  - [ ] **1.3.6.6: Update _run_client() Flow**
+    - Handle optional --config (pass None if not provided)
+    - Handle optional --agent (pass None if not provided)
+    - Handle optional --server-url (pass None if not provided)
+    - Update error messages to mention auto-discovery options
+    - **Acceptance**: _run_client() works with all optional args
+  
+  - [ ] **1.3.6.7: Test and Document**
+    - Test all CLI combinations (explicit, discovery, mixed)
+    - Test backward compatibility with old CLI invocations
+    - Update README with auto-discovery examples
+    - Document environment variables (YOKER_*, ROOMZ_SERVER_URL)
+    - Document config file locations (./yoker.toml, ~/.yoker.toml)
+    - **Acceptance**: All tests pass, README updated, migration guide provided
+
 - [ ] **1.4 Session Context Management**
   - Implement --resume flag for session context resumption
   - List available session contexts with metadata

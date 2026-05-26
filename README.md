@@ -24,19 +24,38 @@ pip install yoker-chat
 
 ## Quick Start
 
+Create two configuration files:
+
+**yoker.toml** - Agent configuration:
+```toml
+[backend]
+provider = "ollama"
+
+[backend.ollama]
+model = "llama3.2:latest"
+
+[context]
+storage_path = "~/.cache/yoker-chat/sessions"
+```
+
+**agents/chat-bot.md** - Agent definition:
+```markdown
+---
+name: ChatBot
+description: A helpful assistant for chat rooms
+tools: read, search, web_search
+---
+
+You are a helpful assistant in a chat room.
+```
+
+Run the client:
 ```bash
-# Set server URL
-export ROOMZ_SERVER_URL=http://localhost:5000
+# Auto-discovery: place yoker.toml in current directory or ~/.yoker.toml
+yoker-chat
 
-# Run with agent definition
-yoker-chat --agent agents/chat-bot.md
-
-# Non-interactive mode
-yoker-chat --server-url http://localhost:5000 \
-           --agent agents/chat-bot.md \
-           --login bot@example.com \
-           --token abc123def456 \
-           --name "ChatBot"
+# Or specify config explicitly
+yoker-chat --config yoker.toml --agent agents/chat-bot.md
 ```
 
 ## Usage
