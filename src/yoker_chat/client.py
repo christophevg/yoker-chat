@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
-from roomz import AsyncClient  # type: ignore[import-untyped]
+from roomz import AsyncClient
 
 log = structlog.get_logger().bind(component="chat-client")
 
