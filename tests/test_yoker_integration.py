@@ -1470,9 +1470,9 @@ class TestCLIArgumentHandling:
   @pytest.mark.asyncio
   async def test_cli_defaults_to_config_file(self, tmp_path: Path):
     """
-    Given: CLI invoked without --config in directory with yoker.toml
+    Given: CLI invoked without --config
     When: Arguments are parsed
-    Then: Default yoker.toml is loaded
+    Then: config defaults to None (auto-discovery)
     """
     from yoker_chat.cli import parse_args
 
@@ -1484,5 +1484,5 @@ class TestCLIArgumentHandling:
     ):
       args = parse_args()
 
-      # Verify default config file
-      assert args.config == "yoker.toml"
+      # Verify config defaults to None (auto-discovery)
+      assert args.config is None

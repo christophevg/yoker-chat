@@ -229,7 +229,7 @@ async def test_auth_display_name_set_on_connect(mock_roomz_class, temp_cache):
   """
   Given: A display name is provided
   When: The client is created
-  Then: The display_name should be passed to Roomz AsyncClient
+  Then: The display_name should be passed to Roomz AsyncClient via Config
   """
   ChatClient(
     server_url="http://localhost:5000",
@@ -238,7 +238,8 @@ async def test_auth_display_name_set_on_connect(mock_roomz_class, temp_cache):
     name="TestBot",
   )
 
-  # Verify display_name was passed to AsyncClient
+  # Verify display_name was passed to AsyncClient via Config
   mock_roomz_class.assert_called_once()
   call_kwargs = mock_roomz_class.call_args[1]
-  assert call_kwargs["display_name"] == "TestBot"
+  assert "config" in call_kwargs
+  assert call_kwargs["config"].display_name == "TestBot"

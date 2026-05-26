@@ -30,20 +30,17 @@ def parse_args() -> argparse.Namespace:
 
   parser.add_argument(
     "--server-url",
-    required=True,
-    help="Roomz server URL (or set ROOMZ_SERVER_URL env var)",
+    help="Roomz server URL (auto-discovered from ROOMZ_SERVER_URL env, ~/.roomz.toml, ./roomz.toml)",
   )
 
   parser.add_argument(
     "--agent",
-    required=True,
-    help="Path to agent definition file (Markdown with YAML frontmatter)",
+    help="Path to agent definition file (auto-discovered from yoker.toml [agents].definition)",
   )
 
   parser.add_argument(
     "--config",
-    default="yoker.toml",
-    help="Path to Yoker config file (default: yoker.toml)",
+    help="Path to Yoker config file (auto-discovered from YOKER_* env vars, ./yoker.toml, ~/.yoker.toml)",
   )
 
   parser.add_argument(
@@ -109,55 +106,91 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
   )
 
 
-def load_yoker_config(config_path: Path) -> Any:
-  """Load Yoker configuration from TOML file.
+def load_yoker_config(config_path: Path | None) -> Any:
+  """Load Yoker configuration using auto-discovery.
+
+  Discovery order:
+  1. Explicit path (if provided via --config)
+  2. Environment variables (YOKER_*)
+  3. ./yoker.toml (current directory)
+  4. ~/.yoker.toml (home directory)
 
   Args:
-    config_path: Path to configuration file.
+    config_path: Optional explicit path to config file.
 
   Returns:
     Config object.
 
   Raises:
-    FileNotFoundError: If config file doesn't exist.
+    FileNotFoundError: If explicit path provided but file doesn't exist.
     ConfigurationError: If configuration is invalid.
   """
   from yoker import ConfigurationError, load_config
 
-  validated_path = validate_config_path(config_path)
-
   try:
-    config = load_config(validated_path)
-    log.info("config_loaded", path=str(validated_path))
+    if config_path:
+      # Explicit path provided - validate and load
+      validated_path = validate_config_path(config_path)
+      log.info("loading_config_from_path", path=str(validated_path))
+      config = load_config(validated_path)
+      log.info("config_loaded", path=str(validated_path))
+    else:
+      # Use auto-discovery from yoker library
+      log.info("auto_discovering_config")
+      from yoker import Config
+
+      config = Config.discover()
+      log.info("config_loaded", source="discovery")
+
     return config
+  except FileNotFoundError:
+    # Re-raise FileNotFoundError for explicit paths
+    raise
   except ConfigurationError as e:
-    log.error("config_invalid", path=str(validated_path), error=str(e))
+    log.error(
+      "config_invalid",
+      path=str(config_path) if config_path else "discovery",
+      error=str(e),
+    )
     raise
 
 
-def load_yoker_agent_definition(agent_path: Path) -> Any:
-  """Load agent definition from Markdown file.
+def load_yoker_agent_definition(agent_path: Path | None, config: Any = None) -> Any:
+  """Load agent definition from explicit path or config.
 
   Args:
-    agent_path: Path to agent definition file.
+    agent_path: Optional explicit path to agent definition.
+    config: Yoker configuration (may contain agents.definition).
 
   Returns:
     AgentDefinition object.
 
   Raises:
-    FileNotFoundError: If agent file doesn't exist.
+    FileNotFoundError: If agent file doesn't exist and not in config.
     ConfigurationError: If agent definition is invalid.
   """
   from yoker import ConfigurationError
   from yoker.agents import load_agent_definition
 
-  validated_path = validate_agent_path(agent_path)
+  # Determine path to use
+  path_to_use = None
+  if agent_path:
+    path_to_use = validate_agent_path(agent_path)
+    log.info("agent_path_from_cli", path=str(path_to_use))
+  elif config and hasattr(config, "agents") and hasattr(config.agents, "definition"):
+    config_path = Path(config.agents.definition).expanduser()
+    path_to_use = validate_agent_path(config_path)
+    log.info("agent_path_from_config", path=str(path_to_use))
+  else:
+    raise FileNotFoundError(
+      "No agent definition provided. Use --agent or configure [agents].definition in yoker.toml"
+    )
 
   try:
-    agent_definition = load_agent_definition(validated_path)
+    agent_definition = load_agent_definition(path_to_use)
     log.info(
       "agent_loaded",
-      path=str(validated_path),
+      path=str(path_to_use),
       name=getattr(agent_definition, "name", "unknown"),
       tools=getattr(agent_definition, "tools", []),
     )
@@ -169,7 +202,7 @@ def load_yoker_agent_definition(agent_path: Path) -> Any:
 
     return agent_definition
   except ConfigurationError as e:
-    log.error("agent_invalid", path=str(validated_path), error=str(e))
+    log.error("agent_invalid", path=str(path_to_use), error=str(e))
     raise
 
 
@@ -257,29 +290,41 @@ async def _run_client(args: argparse.Namespace) -> None:
   # Phase 1: Load configuration
   # ─────────────────────────────────────────────────────────────────────────
   try:
-    config_path = Path(args.config)
+    config_path = Path(args.config) if args.config else None
     config = load_yoker_config(config_path)
   except FileNotFoundError as e:
     print(f"Error: Configuration file not found: {e}")
-    print("Create a yoker.toml file or specify --config path")
+    if args.config:
+      print(f"Check if {args.config} exists")
+    else:
+      print("Use --config path or set YOKER_* environment variables")
     exit(1)
   except Exception as e:
     print(f"Error: Invalid configuration: {e}")
-    print(f"Check {args.config} for errors")
+    if args.config:
+      print(f"Check {args.config} for errors")
+    else:
+      print("Check configuration for errors")
     exit(1)
 
   # Phase 2: Load agent definition
   # ─────────────────────────────────────────────────────────────────────────
   try:
-    agent_path = Path(args.agent)
-    agent_definition = load_yoker_agent_definition(agent_path)
+    agent_path = Path(args.agent) if args.agent else None
+    agent_definition = load_yoker_agent_definition(agent_path, config)
   except FileNotFoundError as e:
     print(f"Error: Agent definition not found: {e}")
-    print("Create an agent definition file (Markdown with YAML frontmatter)")
+    if args.agent:
+      print(f"Check if {args.agent} exists")
+    else:
+      print("Use --agent path or configure [agents].definition in yoker.toml")
     exit(1)
   except Exception as e:
     print(f"Error: Invalid agent definition: {e}")
-    print(f"Check {args.agent} for required fields (name, description, tools)")
+    if args.agent:
+      print(f"Check {args.agent} for required fields (name, description, tools)")
+    else:
+      print("Check agent definition for required fields (name, description, tools)")
     exit(1)
 
   # Phase 3: Context manager (session resume)
