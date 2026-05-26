@@ -106,55 +106,6 @@ def setup_logging(log_file: str | None, log_format: str) -> None:
   )
 
 
-def load_yoker_config(config_path: Path | None) -> Any:
-  """Load Yoker configuration using auto-discovery.
-
-  Discovery order:
-  1. Explicit path (if provided via --config)
-  2. Environment variables (YOKER_*)
-  3. ./yoker.toml (current directory)
-  4. ~/.yoker.toml (home directory)
-
-  Args:
-    config_path: Optional explicit path to config file.
-
-  Returns:
-    Config object.
-
-  Raises:
-    FileNotFoundError: If explicit path provided but file doesn't exist.
-    ConfigurationError: If configuration is invalid.
-  """
-  from yoker import ConfigurationError, load_config
-
-  try:
-    if config_path:
-      # Explicit path provided - validate and load
-      validated_path = validate_config_path(config_path)
-      log.info("loading_config_from_path", path=str(validated_path))
-      config = load_config(validated_path)
-      log.info("config_loaded", path=str(validated_path))
-    else:
-      # Use auto-discovery from yoker library
-      log.info("auto_discovering_config")
-      from yoker import Config
-
-      config = Config.discover()
-      log.info("config_loaded", source="discovery")
-
-    return config
-  except FileNotFoundError:
-    # Re-raise FileNotFoundError for explicit paths
-    raise
-  except ConfigurationError as e:
-    log.error(
-      "config_invalid",
-      path=str(config_path) if config_path else "discovery",
-      error=str(e),
-    )
-    raise
-
-
 def load_yoker_agent_definition(agent_path: Path | None, config: Any = None) -> Any:
   """Load agent definition from explicit path or config.
 
@@ -178,9 +129,16 @@ def load_yoker_agent_definition(agent_path: Path | None, config: Any = None) -> 
     path_to_use = validate_agent_path(agent_path)
     log.info("agent_path_from_cli", path=str(path_to_use))
   elif config and hasattr(config, "agents") and hasattr(config.agents, "definition"):
-    config_path = Path(config.agents.definition).expanduser()
-    path_to_use = validate_agent_path(config_path)
-    log.info("agent_path_from_config", path=str(path_to_use))
+    config_definition = config.agents.definition
+    # Only use config definition if it's non-empty
+    if config_definition and config_definition.strip():
+      config_path = Path(config_definition).expanduser()
+      path_to_use = validate_agent_path(config_path)
+      log.info("agent_path_from_config", path=str(path_to_use))
+    else:
+      raise FileNotFoundError(
+        "No agent definition provided. Use --agent or configure [agents].definition in yoker.toml"
+      )
   else:
     raise FileNotFoundError(
       "No agent definition provided. Use --agent or configure [agents].definition in yoker.toml"
@@ -285,13 +243,24 @@ def create_context_manager(
 
 async def _run_client(args: argparse.Namespace) -> None:
   """Initialize and run the chat client."""
-  from yoker import Agent, ThinkingMode
+  from yoker import Agent, ConfigurationError, ThinkingMode, load_config
 
   # Phase 1: Load configuration
   # ─────────────────────────────────────────────────────────────────────────
   try:
-    config_path = Path(args.config) if args.config else None
-    config = load_yoker_config(config_path)
+    if args.config:
+      # Explicit config path provided - validate and use it
+      config_path = validate_config_path(Path(args.config))
+      log.info("loading_config_from_path", path=str(config_path))
+      config = load_config(config_path)
+      log.info("config_loaded", path=str(config_path))
+    else:
+      # Use auto-discovery from yoker library
+      log.info("auto_discovering_config")
+      from yoker import Config
+
+      config = Config.discover()
+      log.info("config_loaded", source="discovery")
   except FileNotFoundError as e:
     print(f"Error: Configuration file not found: {e}")
     if args.config:
@@ -299,7 +268,7 @@ async def _run_client(args: argparse.Namespace) -> None:
     else:
       print("Use --config path or set YOKER_* environment variables")
     exit(1)
-  except Exception as e:
+  except ConfigurationError as e:
     print(f"Error: Invalid configuration: {e}")
     if args.config:
       print(f"Check {args.config} for errors")
